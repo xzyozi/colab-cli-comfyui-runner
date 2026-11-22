@@ -183,16 +183,22 @@ def test_cli_parsers_and_dynamic_ssh_options(tmp_path: Path) -> None:
     """colab usage / sessions パーサと動的 ProxyCommand オプションの検証。"""
     assert parse_cu_usage('{"remaining_cu": 185.5}') == 185.5
     assert parse_cu_usage("Remaining compute units: 142.25 CU") == 142.25
+    assert (
+        parse_cu_usage("Current balance: 600.00 compute units\nUsage rate: 0.00/hr\nActive assignments: 0\n")
+        == 600.0
+    )
     with pytest.raises(PreflightCuError):
         parse_cu_usage("")
 
     assert parse_sessions("No active sessions.") == set()
+    assert parse_sessions("[colab] No active sessions found on server.\n") == set()
     assert parse_sessions('[{"name": "ccr-1"}, {"name": "ccr-2"}]') == {"ccr-1", "ccr-2"}
     assert parse_sessions("NAME   GPU\nccr-1 A100\n") == {"ccr-1"}
 
     key = tmp_path / "my key" / "id_ed25519"
     opts = build_ssh_options("ccr-20261122-001", key)
     joined = " ".join(opts)
+    assert "-i " in joined
     assert "colab ssh --proxy-mode -s ccr-20261122-001 -i" in joined
     assert "StrictHostKeyChecking=no" in joined
 

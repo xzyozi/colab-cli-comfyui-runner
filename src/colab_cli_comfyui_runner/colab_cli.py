@@ -7,6 +7,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -124,6 +125,8 @@ def build_ssh_options(session_name: str, ssh_key_path: Path) -> list[str]:
     null_hosts = "NUL" if sys.platform == "win32" else "/dev/null"
     proxy_cmd = f'colab ssh --proxy-mode -s {session_name} -i "{abs_key}"'
     return [
+        "-i",
+        abs_key,
         "-o",
         f"ProxyCommand={proxy_cmd}",
         "-o",
@@ -361,6 +364,17 @@ def _is_local_port_open(port: int) -> bool:
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
+def _resolve_openssh_binary(binary_name: str) -> str:
+    found = shutil.which(binary_name)
+    if found:
+        return found
+    if sys.platform == "win32":
+        system32_candidate = Path(r"C:\Windows\System32\OpenSSH") / f"{binary_name}.exe"
+        if system32_candidate.is_file():
+            return str(system32_candidate)
+    return binary_name
+
+
 class OpenSshTransport:
     """OpenSSH / SCP を用いて動的 `ProxyCommand` 経由でVMと通信する実装。"""
 
@@ -372,8 +386,8 @@ class OpenSshTransport:
             scp_bin: `scp` 実行ファイル名。
             remote_host: SSHターゲットホスト表記。
         """
-        self._ssh_bin = ssh_bin
-        self._scp_bin = scp_bin
+        self._ssh_bin = _resolve_openssh_binary(ssh_bin)
+        self._scp_bin = _resolve_openssh_binary(scp_bin)
         self._remote_host = remote_host
 
     def start_tunnel(

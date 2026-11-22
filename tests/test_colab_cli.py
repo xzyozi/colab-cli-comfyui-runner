@@ -153,8 +153,8 @@ def test_open_ssh_transport_deliver_and_remote_setup(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr("colab_cli_comfyui_runner.colab_cli.subprocess.run", _run_ok)
     transport.deliver_files("ccr-1", key, [setup_sh])
-    assert recorded[0][0] == "ssh"
-    assert recorded[1][0] == "scp"
+    assert Path(recorded[0][0]).stem == "ssh"
+    assert Path(recorded[1][0]).stem == "scp"
     assert any("ProxyCommand=colab ssh --proxy-mode -s ccr-1" in part for part in recorded[1])
 
     transport.run_remote_setup(
