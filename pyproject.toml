@@ -12,9 +12,15 @@ requires-python = ">=3.10"
 
 # 必須のパッケージ
 dependencies = [
-    # 例: "requests>=2.31.0",
-    # 例: "pydantic>=2.0.0"
+    "httpx>=0.28.1",
+    "websockets>=16.1.1",
 ]
+
+[project.scripts]
+ccr = "colab_cli_comfyui_runner.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [dependency-groups]
 # 開発・テスト環境専用のパッケージ（uv sync --dev で導入）
@@ -60,7 +66,7 @@ ignore = []
 
 [tool.ruff.lint.isort]
 # 自分のプロジェクトのパッケージ名を指定（自動ソート時にローカルパッケージとして認識させるため）
-# known-first-party = ["app"]
+known-first-party = ["colab_cli_comfyui_runner"]
 force-sort-within-sections = true
 
 # ==========================================
@@ -68,6 +74,8 @@ force-sort-within-sections = true
 # ==========================================
 [tool.mypy]
 python_version = "3.10"
+mypy_path = "src"
+explicit_package_bases = true
 # 基本的に厳しめの設定（Strict）にしておくのがモダンな手法
 warn_unused_configs = true
 warn_redundant_casts = true

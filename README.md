@@ -4,10 +4,26 @@ Google Colab 上で ComfyUI を実行するための CLI ランナープロジ�
 
 ## 構成
 
+- `src/colab_cli_comfyui_runner/`: VM/SSH制御・ComfyUI API制御・DAO/排他ロック・パイプライン統括
+- `scripts/`: CLIラッパー（`run_batch.py`）および Colab VM側復元スクリプト（`setup.sh`）
+- `tests/`: モックを用いた L1 単体・結合テスト（0 CU）
 - `pyproject.toml`: Pythonプロジェクトと開発ツールの基本設定
 - `docs/`: 要求、設計、手順、検証結果などのドキュメント
 - `.github/workflows/`: ドキュメントとMermaid図・Python CIの定義
 - `.github/scripts/`: CIから呼び出す検証スクリプト
+
+## 開発・テスト実行
+
+```powershell
+# Python依存の同期・テスト実行
+uv sync --group dev
+uv run --no-sync pytest --cov=colab_cli_comfyui_runner --cov-report=term-missing
+uv run --no-sync python scripts/run_batch.py --help
+
+# 外部CLIツール (google-colab-cli) の導入・初回OAuth認証（対話型ターミナルで実行）
+uv tool install google-colab-cli
+colab usage
+```
 
 ## ドキュメント検証
 

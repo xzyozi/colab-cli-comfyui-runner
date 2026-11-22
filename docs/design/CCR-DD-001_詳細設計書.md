@@ -5,9 +5,9 @@ document_number: "CCR-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "1.1"
+version: "1.2"
 created_at: "2026-11-22"
-updated_at: "2026-11-22"
+updated_at: "2026-11-23"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "colab-cli-comfyui-runner のローカル制御・VM配送・環境復元・ComfyUI API制御および安全停止に関わる関数契約・DTO・状態遷移・失敗時契約を定義するため"
@@ -126,6 +126,7 @@ related_documents:
 | `session_prefix` | 文字列 | 任意 | 不可 | `"ccr"` | 英小文字・数字・ハイフン（1〜16文字） | セッション名生成用 |
 | `drive_root` | 文字列 | 任意 | 不可 | `"ComfyUI"` | CLI引数 > 環境変数 `CCR_DRIVE_ROOT` > 既定値 `"ComfyUI"` の順で解決（親参照 `..` 禁止） | `F-003` `EnvDeliveryPayloadDto` の発生源 |
 | `ssh_key_path` | 文字列（Path） | 任意 | 不可 | OS既定 `ed25519` 鍵 | CLI引数 > 環境変数 `CCR_SSH_KEY_PATH` > `~/.ssh/id_ed25519` の順で解決し実在すること | 動的 `ProxyCommand` の `-i` 引数用（ログ出力禁止） |
+| `base_dir` | 文字列（Path） | 任意 | 不可 | カレントディレクトリ | `--base-dir` で指定するリポジトリ・状態ファイル基準ディレクトリ | `workflows/`・`logs/`・`state/` 基点 |
 
 #### 対象機能ID: `F-003`（VM配送入力 DTO: `EnvDeliveryPayloadDto`）
 
@@ -338,3 +339,4 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | 基本設計書（CCR-BD-001）およびVM配送方針に基づき初版作成 |
 | Rev.1.1 | 2026-11-22 | xzyozi | 検収指摘反映（動的 `ProxyCommand` 接続契約、`input_assets` `/upload/image`・`drive_assets/` 解決、`output_prefix` 注入、`session_name` 事前記録、`drive_root`/`ssh_key_path` 受け渡し元明記） |
+| Rev.1.2 | 2026-11-23 | xzyozi | 実装整合（`BatchRunRequestDto` へ `base_dir` を追記） |
