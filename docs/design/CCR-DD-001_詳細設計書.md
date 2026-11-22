@@ -5,7 +5,7 @@ document_number: "CCR-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "1.0"
+version: "1.1"
 created_at: "2026-11-22"
 updated_at: "2026-11-22"
 author: "xzyozi"
@@ -30,7 +30,7 @@ related_documents:
 
 本書は、[CCR-BD-001 基本設計書](./CCR-BD-001_基本設計書.md) で定義されたコンポーネント群（`C-001`〜`C-005`）について、フェーズ2（無人バッチ実行）を軸とした具体的なモジュール間インターフェース、メモリ上 DTO 契約、VM配送経路、ComfyUI API 制御フロー、状態遷移、およびエラー対処契約を定義する。
 
-- **API制御方式の位置づけ（`C-004`）**: 外部依存最小化と `workflow_api.json` 直接投入の観点から、標準実装は ComfyUI 標準 HTTP/WS API（`localhost:8188` 上の `/system_stats`, `/prompt`, `/ws`, `/history/{prompt_id}`）を採用し、`C-004` のアダプタ境界により将来の `ComfyScript` 等への差し替え余地を保持する。
+- **API制御方式の位置づけ（`C-004`）**: 外部依存最小化と `workflow_api.json` 直接投入の観点から、標準実装は ComfyUI 標準 HTTP/WS API（`localhost:8188` 上の `/system_stats`, `/upload/image`, `/prompt`, `/ws`, `/history/{prompt_id}`）を採用し、`C-004` のアダプタ境界により将来の `ComfyScript` 等への差し替え余地を保持する。
 - **VM配送経路の確定（`C-001` → `C-002`）**: モデル重み（約42.5GB）と出力MP4のみを Google Drive に配置し、`scripts/setup.sh` および `workflows/<model_name>/` の依存定義ファイル（`requirements.txt`, `nodes.txt` 等、数KB）は実行時にローカルPC側から `scp` または SSH 標準入力経由で Colab VM の `/tmp/ccr_setup/` へ配送・実行する。これにより Git 管理下の最新版を常に適用し、Drive 側との二重管理を防止する。
 
 ### 1.2 単一責任範囲 (SSOT) とデータ境界
@@ -63,34 +63,38 @@ related_documents:
 #### 機能契約（機能ID: `F-001`）
 
 - **対象機能・関数名**: `preflight_and_acquire_lock`（事前検証・排他ロック取得）
-- **機能概要**: バッチ入力定義とモデルマニフェストを事前検証し、排他ロック（`state/active_batch.lock`）を取得した上で、`colab sessions` による既存アクティブセッション不在および `colab usage` による最低必要CU残高を確認する。
+- **機能概要**: バッチ入力定義とモデルマニフェストを事前検証（ローカル指定の `input_assets` 実在確認含む）し、`O_CREAT | O_EXCL` で排他ロック（`state/active_batch.lock`）を取得した上で、`colab sessions` による既存アクティブセッション不在および `colab usage` による最低必要CU残高を確認する。
 - **事前条件 (Pre-conditions)**: 指定された `batch_spec_path` および対応する `workflows/<model_name>/model_manifest.json` / `workflow_api.json` がローカルに存在すること。
-- **事後条件 (Post-conditions)**: 排他ロックが保持され、全ジョブの入力パラメータが検証済みであり、`PreflightResultDto`（開始前CU残高含む）が返却されること。失敗時は取得済みロックがあれば解放してから例外送出すること。
+- **事後条件 (Post-conditions)**: 排他ロックが保持され、全ジョブの入力パラメータ・ローカル参照素材が検証済みであり、`PreflightResultDto`（開始前CU残高含む）が返却されること。失敗時は取得済みロックがあれば解放してから例外送出すること。
 - **タイムアウト / キャンセル**: `colab usage` / `colab sessions` コマンドごとに 30 秒の上限を設ける。
 - **ログ・メトリクス・相関ID**: `execution_id`・`batch_id`・`cu_before`・既存セッション有無を記録する。認証トークン・個人パスは出力しない。
 
 #### 機能契約（機能ID: `F-002`）
 
 - **対象機能・関数名**: `provision_vm_and_tunnel`（VM起動・Driveマウント・SSHトンネル確立）
-- **機能概要**: `colab new -s <session_name> --gpu A100 --high-mem` でスポットVMを起動し、続けて `colab drivemount` を実行し、`localhost:8188` へのSSHポートフォワーディングバックグラウンドプロセスを確立する。
-- **事前条件 (Pre-conditions)**: `F-001` が成功し、一意な `session_name` が採番済みであること。
-- **事後条件 (Post-conditions)**: Colab VM が稼働中であり、Drive マウント完了およびローカル `127.0.0.1:<local_port>` へのSSH転送プロセスPIDを含む `VmSessionDto` が返却されること。途中失敗時は確保済みVM情報（`session_name`）を呼び出し元へ通知し `F-006` での確実な停止を可能にする。
+- **機能概要**: 一意な `session_name` を採番して `colab new` 実行直前に原子置換で `state/active_batch.lock` へ記録した上で、`colab new -s <session_name> --gpu A100 --high-mem` でスポットVMを起動し、続けて `colab drivemount` を実行して `localhost:8188` へのSSHポートフォワーディングバックグラウンドプロセスを確立する。
+- **動的SSH接続契約（案A）**: 静的 `~/.ssh/config` のホストエイリアスに依存せず、`ssh` / `scp` 実行時に `-o ProxyCommand="colab ssh --proxy-mode -s <session_name> -i <abs_key_path>" -o StrictHostKeyChecking=no -o UserKnownHostsFile=<os_null>` をCLI引数として動的に組み立てて渡す（Windows上のパス区切りやヌルデバイス差異はアダプタ層で吸収する）。
+- **事前条件 (Pre-conditions)**: `F-001` が成功し、排他ロックが保持され、`ssh_key_path` がローカルに存在すること。
+- **事後条件 (Post-conditions)**: ロックに `session_name` が永続記録され、Colab VM 稼働・Drive マウント完了およびローカル `127.0.0.1:<local_port>` へのSSH転送プロセスPIDを含む `VmSessionDto` が返却されること。`colab new` 着手後の途中失敗時はロック記録済みの `session_name` を基に `F-006` での確実な停止を可能にする。
 - **タイムアウト / キャンセル**: `colab new` は 300 秒、`colab drivemount` は 180 秒、SSH疎通待機は 60 秒を上限とする。
 
 #### 機能契約（機能ID: `F-003`）
 
 - **対象機能・関数名**: `deliver_and_restore_env`（依存配送・VM環境復元・ComfyUI起動待機）
-- **機能概要**: ローカルの `scripts/setup.sh` と対象モデルの依存定義（`requirements.txt`, `nodes.txt` 等、存在するもの）を `scp` または SSH 標準入力でVM内 `/tmp/ccr_setup/` へ配送し、`setup.sh` を実行する。`setup.sh` は `comfy-cli`（`uv`連携）での環境構築、モデル別依存の汎用適用、`/content/drive/MyDrive/...` 配下の必須モデル資産存在チェック、シンボリックリンク接続、および ComfyUI バックグラウンド起動を行う。その後ローカルから `/system_stats` ポーリングで待ち受け完了を確認する。
+- **機能概要**: `F-002` と同一の動的 `ProxyCommand` 契約を用い、ローカルの `scripts/setup.sh` と対象モデルの依存定義（`requirements.txt`, `nodes.txt` 等、存在するもの）を `scp` または SSH 標準入力でVM内 `/tmp/ccr_setup/` へ配送し、`setup.sh` を実行する。`setup.sh` は `comfy-cli`（`uv`連携）での環境構築、モデル別依存の汎用適用、`/content/drive/MyDrive/<drive_root>/` 配下の必須モデル資産存在チェック、モデル・`output/` シンボリックリンク接続、Drive入力素材ディレクトリ（`<drive_root>/input/` が存在する場合の `ComfyUI/input/drive_assets/` リンク）構築、および ComfyUI バックグラウンド起動を行う。その後ローカルから `/system_stats` ポーリングで待ち受け完了を確認する。
 - **事前条件 (Pre-conditions)**: `F-002` により VM 稼働・Drive マウント・SSH転送が確立していること。
-- **事後条件 (Post-conditions)**: 全必須モデルリンクと `output/` 直結リンクが有効であり、ComfyUI HTTP API（`/system_stats`）が `200 OK` を応答すること（目標: 3分以内）。リンク対象モデルが Drive 上に不足している場合は即座に `ERR-SETUP-DRIVE-MISSING` で中断する。
+- **事後条件 (Post-conditions)**: 全必須モデルリンク・入力リンク・`output/` 直結リンクが有効であり、ComfyUI HTTP API（`/system_stats`）が `200 OK` を応答すること（目標: 3分以内）。リンク対象モデルが Drive 上に不足している場合は即座に `ERR-SETUP-DRIVE-MISSING` で中断する。
 - **タイムアウト / キャンセル**: 環境復元全体で 600 秒、`/system_stats` ポーリングは 180 秒（5秒間隔）を上限とする。
 
 #### 機能契約（機能ID: `F-004`）
 
 - **対象機能・関数名**: `submit_and_monitor_job`（単一動画生成ジョブ投入・完了監視）
-- **機能概要**: `workflow_api.json` のディープコピーへ `model_manifest.json` の `node_mappings` に従ってジョブパラメータ（プロンプト、解像度、尺、シード値等）を注入し、`POST /prompt` で投入して `prompt_id` を取得する。WebSocket `/ws` により進捗・完了・実行エラーを監視し、切断時は `GET /history/{prompt_id}` へフォールバック確認する。
-- **事前条件 (Pre-conditions)**: `F-003` で ComfyUI 待ち受けが確認済みであり、入力パラメータが事前検証済みであること。
-- **事後条件 (Post-conditions)**: `JobResultDto`（`prompt_id`, `status`, `output_relpath`, `elapsed_sec`, `seed`）を返却する。推論成功時は Drive `output/` 配下に出力ファイル名が確定していること。
+- **機能概要**:
+  1. `input_assets` に `source == "local"` の素材がある場合は `POST /upload/image` でVM側 `ComfyUI/input/` へ送信し返却ファイル名を取得する。`source == "drive"` の素材は `drive_assets/<relpath>` へ解決する（存在不整合時はエラー終了）。
+  2. `workflow_api.json` のディープコピーへ `model_manifest.json` の `node_mappings` に従って、プロンプト・解像度・尺・シード値・解決済み入力素材名・および `output_prefix`（`<model_name>/<batch_id>/<job_id>`）を注入する。
+  3. `POST /prompt` で投入して `prompt_id` を取得し、WebSocket `/ws` により進捗・完了・実行エラーを監視する（切断時は `GET /history/{prompt_id}` へフォールバック確認）。
+- **事前条件 (Pre-conditions)**: `F-003` で ComfyUI 待ち受けが確認済みであり、入力パラメータおよびローカル参照素材が事前検証済みであること。
+- **事後条件 (Post-conditions)**: `JobResultDto`（`prompt_id`, `status`, `output_relpath`, `elapsed_sec`, `seed`）を返却する。推論成功時は Drive `output/<model_name>/<batch_id>/` 配下に出力ファイル名が確定していること。
 - **タイムアウト / キャンセル**: `model_manifest.json` の `default_job_timeout_sec`（既定 900 秒）を上限とし、超過時は `POST /interrupt` を試行した上でタイムアウトエラーとする。
 
 #### 機能契約（機能ID: `F-005`）
@@ -119,17 +123,20 @@ related_documents:
 | `dry_run` | ブーリアン | 任意 | 不可 | `false` | `true` の場合は `F-001` の検証・ロック確認まで行いVM起動せず終了 | 事前パラメータ検証用 |
 | `local_port` | 整数 | 任意 | 不可 | `8188` | `1024` 〜 `65535` の空きローカルポート | SSH転送先ポート |
 | `session_prefix` | 文字列 | 任意 | 不可 | `"ccr"` | 英小文字・数字・ハイフン（1〜16文字） | セッション名生成用 |
+| `drive_root` | 文字列 | 任意 | 不可 | `"ComfyUI"` | CLI引数 > 環境変数 `CCR_DRIVE_ROOT` > 既定値 `"ComfyUI"` の順で解決（親参照 `..` 禁止） | `F-003` `EnvDeliveryPayloadDto` の発生源 |
+| `ssh_key_path` | 文字列（Path） | 任意 | 不可 | OS既定 `ed25519` 鍵 | CLI引数 > 環境変数 `CCR_SSH_KEY_PATH` > `~/.ssh/id_ed25519` の順で解決し実在すること | 動的 `ProxyCommand` の `-i` 引数用（ログ出力禁止） |
 
 #### 対象機能ID: `F-003`（VM配送入力 DTO: `EnvDeliveryPayloadDto`）
 
 | パラメータ名 / フィールド | データ型 | 必須性 | NULL可 | デフォルト値 | バリデーションルール・入力制約 | 例・備考 |
 | :--- | :--- | :---: | :---: | :--- | :--- | :--- |
 | `session_name` | 文字列 | 必須 | 不可 | なし | `F-002` で確保済みのセッション名 | `ccr-20261122-001` |
+| `ssh_key_path` | 文字列（Path） | 必須 | 不可 | なし | `BatchRunRequestDto.ssh_key_path` から引き継ぐ実在秘密鍵パス | `scp` / SSH `ProxyCommand` 用（ログ出力禁止） |
 | `model_name` | 文字列 | 必須 | 不可 | なし | `workflows/<model_name>/` が実在すること | `minimax_h3` |
 | `setup_script_path` | 文字列（Path） | 必須 | 不可 | なし | `scripts/setup.sh` が実在すること | 共通VM復元スクリプト |
 | `dependency_files` | 配列（Path） | 任意 | 不可 | `[]` | `requirements.txt`, `nodes.txt` 等、実在ファイルのみ格納 | `workflows/minimax_h3/nodes.txt` |
 | `required_drive_assets` | 配列（文字列） | 必須 | 不可 | なし | `model_manifest.json` 記載のDrive相対パス一覧 | 存在検証・リンク作成対象 |
-| `drive_root` | 文字列 | 必須 | 不可 | `"ComfyUI"` | `/content/drive/MyDrive/` 配下のルートフォルダ名（相対パス要素） | 資産・出力基点 |
+| `drive_root` | 文字列 | 必須 | 不可 | `"ComfyUI"` | `BatchRunRequestDto.drive_root` から引き継ぐ `/content/drive/MyDrive/` 配下のルートフォルダ名 | 資産・入力・出力基点 |
 
 #### 対象機能ID: `F-004`（ジョブ投入入力 DTO: `JobSubmitDto`）
 
@@ -137,8 +144,10 @@ related_documents:
 | :--- | :--- | :---: | :---: | :--- | :--- | :--- |
 | `execution_id` | 文字列 | 必須 | 不可 | なし | UUID文字列 | 監査相関ID |
 | `job_id` | 文字列 | 必須 | 不可 | なし | 1〜64文字の識別子 | `job_001` |
+| `output_prefix` | 文字列 | 必須 | 不可 | なし | `<model_name>/<batch_id>/<job_id>` 形式（親参照 `..` 禁止） | Drive `output/` サブディレクトリ保存用 |
 | `workflow_template` | 辞書 | 必須 | 不可 | なし | `workflow_api.json` を読み込んだ辞書（毎回複製して使用） | テンプレート非破壊 |
 | `resolved_params` | 辞書 | 必須 | 不可 | なし | `width`/`height`（正の偶数）、`duration_sec`（4〜15等）、確定済み `seed`（0以上整数） | 既定値補完済み |
+| `input_assets` | オブジェクト | 任意 | 不可 | `{}` | 各値 `{ "source": "local" \| "drive", "path": "..." }`（`local` は `/upload/image` 対象、`drive` は `drive_assets/` 相対解決対象） | FL2VA/Ref2VA 用素材マップ |
 | `timeout_sec` | 整数 | 必須 | 不可 | `900` | `60` 〜 `3600` | 単一ジョブ上限 |
 
 ### 2.4 出力 DTO スキーマ・戻り値仕様
@@ -207,16 +216,17 @@ sequenceDiagram
     participant Comfy as ComfyUI API (C-003/C-004)
     participant Store as ローカルDAO / Drive (DS-001)
 
-    CLI->>Store: ロック取得・入力JSON読込検証 (F-001)
+    CLI->>Store: 排他ロック取得(O_CREAT|O_EXCL)・入力/ローカル素材検証 (F-001)
     CLI->>VM: colab sessions & colab usage 確認
     VM-->>CLI: 残存なし & cu_before 十分
 
-    CLI->>VM: colab new -s <session> --gpu A100 --high-mem (F-002)
+    CLI->>Store: 採番 session_name をロックへ原子書き込み (F-002)
+    CLI->>VM: colab new -s <session> --gpu A100 --high-mem
     CLI->>VM: colab drivemount
-    CLI->>VM: SSHポート転送確立 (localhost:8188)
+    CLI->>VM: 動的ProxyCommandでSSHポート転送確立 (localhost:8188)
 
-    CLI->>Setup: scp/SSHで setup.sh と workflows/<model> 依存を配送 (F-003)
-    Setup->>Store: /content/drive/MyDrive モデル存在チェック & リンク作成
+    CLI->>Setup: 動的ProxyCommand(scp/SSH)で setup.sh とモデル依存配送 (F-003)
+    Setup->>Store: Driveモデル存在チェック & モデル/入力/outputリンク作成
     Setup->>Comfy: comfy-cli構築・モデル依存適用・ComfyUI起動
     loop ヘルスチェック待機 (最大180秒)
         CLI->>Comfy: GET /system_stats
@@ -224,10 +234,14 @@ sequenceDiagram
     end
 
     loop 各ジョブ (5〜10本目安・予算時間内) (F-004/F-005)
-        CLI->>Comfy: POST /prompt (パラメータ注入済みJSON)
+        opt ローカル input_assets あり
+            CLI->>Comfy: POST /upload/image (ローカル参照素材送信)
+            Comfy-->>CLI: 格納ファイル名
+        end
+        CLI->>Comfy: POST /prompt (パラメータ・output_prefix注入済みJSON)
         Comfy-->>CLI: prompt_id
         CLI->>Comfy: WS /ws 監視 (切断時は GET /history/{prompt_id})
-        Comfy->>Store: 完了MP4を Drive output/ へ直結書込
+        Comfy->>Store: 完了MP4を Drive output/<model>/<batch>/ へ直結書込
         CLI->>Store: ジョブ結果を原子書き込みで保存
     end
 
@@ -241,15 +255,15 @@ sequenceDiagram
 
 - **初期状態**: `Initialized`（`F-005` が `execution_id` を採番し開始した状態）
 - **終端状態**: `Completed`（1件以上のジョブ処理または全ジョブ完了を経て安全停止が完了した状態）、`Aborted`（事前検証失敗、環境復元失敗、途中致命エラー、割り込み、または `colab stop` 失敗により中断した状態）
-- **状態不変条件**: `VmProvisioning` 以降に遷移した場合、ローカルの `state/active_batch.lock` に `session_name` が記録されており、終端状態へ遷移する前に必ず `F-006`（停止処理・監査）を経由する。
+- **状態不変条件**: `VmProvisioning` に入る直前（`colab new` 呼び出し前）にローカルの `state/active_batch.lock` へ `session_name` が原子書き込みされており、`VmProvisioning` 以降に遷移した場合は終端状態へ遷移する前に必ず `F-006`（停止処理・監査）を経由する。
 - **未定義イベントの扱い**: 現状態で想定外のイベントが発生した場合はエラーログを記録し、`Stopping`（VM未確保時は `Aborted`）へ安全側に遷移する。
 
 | 現在の状態 | 実行結果 / イベント | 次の状態 | 遷移判定条件・閾値ルール | 副作用・ログ / メトリクス |
 | :--- | :--- | :--- | :--- | :--- |
-| `Initialized` | `F-001` 成功 | `PreflightChecked` | ロック取得成功、JSON検証OK、`cu_before >= min_required_cu`、残存セッション空 | 実行ログ作成（原子書き込み） |
+| `Initialized` | `F-001` 成功 | `PreflightChecked` | 排他ロック取得成功、JSON・ローカル素材検証OK、`cu_before >= min_required_cu`、残存セッション空 | 実行ログ作成（原子書き込み） |
 | `Initialized` | `F-001` 失敗 | `Aborted` | ロック競合、入力不正、CU不足、既存セッション残存 | 取得済みならロック解放、エラーコード記録 |
-| `PreflightChecked` | `F-002` 成功 | `VmProvisioning` → `EnvRestoring` | `colab new`、`colab drivemount`、SSHトンネル確立すべて成功 | ロックへ `session_name` 記録 |
-| `VmProvisioning` | `F-002` 失敗 / タイムアウト | `Stopping` | いずれかのコマンド失敗またはタイムアウト | `colab new` 済みなら `F-006` へ遷移 |
+| `PreflightChecked` | `F-002` 開始〜成功 | `VmProvisioning` → `EnvRestoring` | `colab new` 直前にロックへ `session_name` 原子書き込み後、`colab new`・`colab drivemount`・動的SSHトンネル確立すべて成功 | ロック内 `session_name` 確定済み |
+| `VmProvisioning` | `F-002` 失敗 / タイムアウト | `Stopping` | いずれかのコマンド失敗またはタイムアウト | `session_name` 記録済みのため必ず `F-006` へ遷移 |
 | `EnvRestoring` | `F-003` 成功 | `RunningBatch` | `/system_stats` が 180 秒以内に `200 OK` 応答 | 復元所要時間をログ記録（目標3分以内） |
 | `EnvRestoring` | `F-003` 失敗 | `Stopping` | Driveモデル欠落、`setup.sh` 非ゼロ終了、待機超過 | エラー詳細記録後に即 `F-006` へ |
 | `RunningBatch` | `F-004` 完了（次ジョブあり） | `RunningBatch` | 経過時間 < `max_batch_duration_sec` かつ 連続失敗数 < 上限 | ジョブ結果・生成パス・経過秒数を原子書込 |
@@ -271,7 +285,7 @@ sequenceDiagram
 | `ERR-SETUP-DRIVE-MISSING` | 環境復元 | `/content/drive/MyDrive/...` 配下の必須モデル不在 | 0 | ファイル配置不足は自動回復しない | `Aborted` | Google Drive 側のモデルファイル配置を確認 | `F-006` で即停止しCU空費を防止 |
 | `ERR-SETUP-COMFY` | 環境復元 | `setup.sh` 失敗、または `/system_stats` 待機超過 | 0 | 長時間リトライによるCU消費を防ぐため即停止 | `Aborted` | 配送ログ・依存定義（`requirements.txt`/`nodes.txt`）を点検 | `F-006` で停止・実行ログへエラー保存 |
 | `ERR-JOB-VALIDATION` | 入力検証 | パラメータ範囲外（尺・解像度等）・入力素材不在 | 0 | 事前検証エラーは不変 | `Aborted` | バッチJSON・マニフェスト定義を修正 | VM起動前（`F-001`）で検出し課金ゼロ |
-| `ERR-JOB-API-TRANSIENT` | API通信 | WS切断・一時的HTTP 5xx/接続タイムアウト | 3 | `POST /prompt` 前または `/history/{prompt_id}` で未投入確認済みの場合のみ再投入可 | `RunningBatch` 継続 / 超過時ジョブ失敗 | ネットワーク安定性確認 | 完了済みMP4はDrive上に保全 |
+| `ERR-JOB-API-TRANSIENT` | API通信 | `/upload/image`・`/prompt`・WS切断・一時的HTTP 5xx/接続タイムアウト | 3 | `POST /prompt` 前（`/upload/image` 含む）または `/history/{prompt_id}` で未投入確認済みの場合のみ再投入可 | `RunningBatch` 継続 / 超過時ジョブ失敗 | ネットワーク安定性確認 | 完了済みMP4はDrive上に保全 |
 | `ERR-JOB-EXECUTION` | 推論実行 | ComfyUI `execution_error`、CUDA OOM、単一ジョブタイムアウト | 0 | 同一パラメータでのOOM再発防止のため再試行しない | 継続または `Aborted`（連続2件失敗で中断） | 解像度・尺・ワークフロー設定を見直す | 失敗ジョブ以前の完了済みMP4はDrive上に残存 |
 | `ERR-BATCH-BUDGET` | 時間予算 | 経過時間 >= `max_batch_duration_sec` | 0 | 予算超過時は停止のみ行う | `Completed` / `Aborted` | 未実行ジョブのみ新バッチで再投入 | 既完了ジョブは保存、残りは `skipped` |
 | `ERR-STOP-FAILURE` | 安全停止 | `colab stop` がリトライ後も失敗またはセッション残存 | 3 | `colab stop` は冪等のため安全に再試行可 | `Aborted` | 即座に手動で `colab stop` / Colab Web UIからランタイム終了 | 高優先度アラート出力、ロックに警告情報残置可 |
@@ -285,9 +299,9 @@ sequenceDiagram
 | 要件ID | 対象機能ID | 保証すべき振る舞い・条件 | 検証観点 | 対応テストケース |
 | :--- | :--- | :--- | :--- | :--- |
 | `TR-001` | `F-001` | 有効ロック存在時および CU不足・残存セッション存在時にVMを起動せず即 `Aborted` となること（stale lock 回収条件含む） | 正常 / 境界 / 異常 / 排他 | CCR-TEST-001（作成予定） |
-| `TR-002` | `F-002` | `colab new` → `colab drivemount` → SSH転送の呼び出し順序、および途中失敗時に `F-006` へ渡す `session_name` が保持されること | 正常 / 異常 / 順序保証 | CCR-TEST-001（作成予定） |
-| `TR-003` | `F-003` | `setup.sh` および `workflows/<model_name>/` 依存定義のみが `/tmp/ccr_setup/` へ配送され、Driveモデル欠落時に即停止すること | 正常 / 異常 / 配送分離 | CCR-TEST-001（作成予定） |
-| `TR-004` | `F-004` | テンプレートJSONが非破壊でパラメータ注入され、WS切断時でも `/history/{prompt_id}` フォールバックにより重複投入せず結果取得できること | 正常 / 再試行 / 冪等性 | CCR-TEST-001（作成予定） |
+| `TR-002` | `F-002` | `colab new` 直前にロックへ `session_name` が原子書込され、`colab new` → `colab drivemount` → 動的 `ProxyCommand` によるSSH転送の順で実行されること（途中失敗時も `F-006` 停止可能） | 正常 / 異常 / 順序保証 | CCR-TEST-001（作成予定） |
+| `TR-003` | `F-003` | `setup.sh` および `workflows/<model_name>/` 依存定義のみが動的 `ProxyCommand` 経由で `/tmp/ccr_setup/` へ配送され、Driveモデル欠落時に即停止すること | 正常 / 異常 / 配送分離 | CCR-TEST-001（作成予定） |
+| `TR-004` | `F-004` | テンプレートJSONが非破壊でパラメータ・`output_prefix`・`input_assets`（ローカルは `/upload/image`、Driveは `drive_assets/`）注入され、WS切断時も `/history/{prompt_id}` で重複投入せず結果取得できること | 正常 / 再試行 / 冪等性 | CCR-TEST-001（作成予定） |
 | `TR-005` | `F-004` | 単一ジョブタイムアウト超過時に `/interrupt` を試行し、次のジョブまたは安全停止へ適切に遷移すること | 境界 / 異常 / タイムアウト | CCR-TEST-001（作成予定） |
 | `TR-006` | `F-005` | `max_batch_duration_sec` 超過時に未投入ジョブが `skipped` と記録され、各完了ジョブが原子書き込みで永続化されること | 境界 / 永続化 | CCR-TEST-001（作成予定） |
 | `TR-007` | `F-005`, `F-006` | 推論エラー・`SIGINT` 割り込み・`F-003` 失敗のいずれでも `finally` 経由で `colab stop` と `colab sessions` 空確認・ロック解放が実行されること | 異常 / 割り込み / 安全回路 | CCR-TEST-001（作成予定） |
@@ -322,3 +336,4 @@ sequenceDiagram
 | 版数 | 改訂日 | 変更者 | 変更内容・変更理由 (Why) |
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | 基本設計書（CCR-BD-001）およびVM配送方針に基づき初版作成 |
+| Rev.1.1 | 2026-11-22 | xzyozi | 検収指摘反映（動的 `ProxyCommand` 接続契約、`input_assets` `/upload/image`・`drive_assets/` 解決、`output_prefix` 注入、`session_name` 事前記録、`drive_root`/`ssh_key_path` 受け渡し元明記） |

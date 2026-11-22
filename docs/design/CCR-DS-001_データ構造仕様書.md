@@ -5,7 +5,7 @@ document_number: "CCR-DS-001"
 document_role: "normative"
 ssot_scope: "persistent_data"
 status: "draft"
-version: "1.0"
+version: "1.1"
 created_at: "2026-11-22"
 updated_at: "2026-11-22"
 author: "xzyozi"
@@ -60,11 +60,12 @@ related_documents:
 | 共通制御基盤 | ローカル（Git管理）: `scripts/`（`setup.sh`, `run_batch.py` 等） | VMライフサイクル制御・API投入・セットアップスクリプト | xzyozi（Git管理） | Git履歴で管理。実行時に `setup.sh` のみVMへ配送 |
 | モデル別定義一式 | ローカル（Git管理）: `workflows/<model_name>/` | `workflow_api.json`, `model_manifest.json`, 任意の `requirements.txt` / `nodes.txt` | xzyozi（Git管理） | Git履歴で管理。実行時に依存定義一式をVMへ配送 |
 | バッチ入力定義 | ローカル: `batches/<batch_id>.json` | 対象モデル名、セッション上限時間、ジョブ配列（プロンプト・パラメータ） | xzyozi（ローカル読取専用扱い） | 実行者が作成・Git管理またはローカル保管 |
-| 実行状態・監査ログ | ローカル: `logs/batch_<batch_id>.json` | セッション名、開始/終了CU残高、各ジョブ状態・`prompt_id`・所要時間 | xzyozi（プログラム原子書込） | 永続保持。中断時は完了済みジョブIDの識別・再実行判定に利用 |
+| 実行状態・監査ログ | ローカル: `logs/batch_<batch_id>_<execution_id>.json` | セッション名、開始/終了CU残高、各ジョブ状態・`prompt_id`・所要時間 | xzyozi（プログラム原子書込） | 永続保持。同一 `batch_id` 再実行時も履歴を上書きせず追跡可能 |
 | 月次CU履歴追記ログ | ローカル: `logs/cu_usage_history.jsonl` | バッチ単位の開始前CU・終了後CU・実消費CU・稼働時間サマリ | xzyozi（プログラム追記） | 月間200 CU枠の消化状況追跡用 |
 | ローカル排他ロック | ローカル: `state/active_batch.lock` | 実行中PID、ホスト名、セッション名、取得時刻、TTL | xzyozi（制御プロセス所有） | 正常/異常終了の `finally` で削除。残存時は stale 判定後に回収 |
 | Drive モデル重み資産 | Drive: `<drive_root>/models/{diffusion_models,text_encoders,vae,loras}/` | MiniMax H3 量子化モデル・エンコーダ・VAE・LoRA（約42.5GB） | xzyozi（Drive単一所有） | Google Drive 5TB上に永続保持。VMからはシンボリックリンクで参照 |
-| Drive 出力成果物 | Drive: `<drive_root>/output/<model_name>/<batch_id>/` | 生成済みMP4動画（24fps・32kHzステレオ音声付き） | xzyozi（ComfyUI書込先直結） | シンボリックリンク直結により生成完了と同時に永続化 |
+| Drive 入力素材領域 | Drive: `<drive_root>/input/` | FL2VA/Ref2VA等で利用する事前配置済み画像・音声素材（任意） | xzyozi（Drive単一所有） | VM側 `ComfyUI/input/drive_assets/` へリンクし、ローカル送信分と分離 |
+| Drive 出力成果物 | Drive: `<drive_root>/output/<model_name>/<batch_id>/` | 生成済みMP4動画（24fps・32kHzステレオ音声付き） | xzyozi（ComfyUI書込先直結） | `output_prefix` 注入＋シンボリックリンク直結により完了と同時に永続化 |
 | VM 一時配送領域 | Colab VM: `/tmp/ccr_setup/` | ローカルから `scp`/SSH標準入力で配送された `setup.sh` およびモデル依存定義 | Colabセッション内ユーザー | VM停止（`colab stop`）と同時に自動破棄 |
 
 ---
@@ -79,6 +80,7 @@ erDiagram
     BATCH_SPEC ||--|{ JOB_ITEM : defines
     BATCH_SPEC ||--o{ BATCH_EXECUTION_LOG : produces
     BATCH_EXECUTION_LOG ||--|{ JOB_EXECUTION_RECORD : tracks
+    BATCH_EXECUTION_LOG ||--o| CU_USAGE_RECORD : summarizes
     EXECUTION_LOCK ||--o| BATCH_EXECUTION_LOG : guards
 
     MODEL_MANIFEST {
@@ -87,7 +89,7 @@ erDiagram
         string workflow_template_path
         string requirements_path
         string nodes_path
-        int default_timeout_sec
+        int default_job_timeout_sec
     }
     BATCH_SPEC {
         string schema_version
@@ -126,6 +128,20 @@ erDiagram
         float elapsed_sec
         string error_code
     }
+    CU_USAGE_RECORD {
+        string schema_version
+        string execution_id PK
+        string batch_id FK
+        string model_name
+        string session_name
+        float cu_before
+        float cu_after
+        float cu_consumed
+        float duration_sec
+        int succeeded_count
+        int failed_count
+        string recorded_at
+    }
     EXECUTION_LOCK {
         string lock_id PK
         string batch_id FK
@@ -147,7 +163,7 @@ erDiagram
 | `$.model_name` | 文字列 | 必須 | 不可 | なし | 英小文字・数字・アンダースコア（ディレクトリ名と一致、例: `"minimax_h3"`） | 不変識別子 |
 | `$.workflow_template_path` | 文字列 | 必須 | 不可 | `"workflow_api.json"` | モデルディレクトリからの相対パス（親参照 `..` 禁止） | 任意パス変更不可 |
 | `$.required_drive_assets` | 配列 | 必須 | 不可 | なし | Drive相対パス（`models/...`）の非空配列。`C-002` が存在チェックとリンク作成に使用 | 新規アセット追加時は末尾追加 |
-| `$.node_mappings` | オブジェクト | 必須 | 不可 | なし | `prompt`、`width`、`height`、`duration_sec`、`seed` 等の論理キーからテンプレートJSON内ノードID・フィールド名への対応表 | モデル差し替え時も共通基盤を変更せず吸収 |
+| `$.node_mappings` | オブジェクト | 必須 | 不可 | なし | `prompt`、`width`、`height`、`duration_sec`、`seed`、`output_prefix`（出力ノードの `filename_prefix`、注入値 `<model_name>/<batch_id>/<job_id>`）、および `input_assets` 各論理キーからテンプレートJSON内ノードID・フィールド名への対応表 | モデル差し替え時も共通基盤を変更せず吸収 |
 | `$.default_params` | オブジェクト | 必須 | 不可 | なし | 解像度・尺・ステップ数等の既定値マップ（`CCR-DD-001` のDTO検証で上限・下限を適用） | 未指定項目の補完用 |
 | `$.requirements_path` | 文字列 | 任意 | 可 | `null` | モデルディレクトリ相対パス（例: `"requirements.txt"`）。存在時のみVMへ配送・適用 | 未指定時は追加pip導入なし |
 | `$.nodes_path` | 文字列 | 任意 | 可 | `null` | モデルディレクトリ相対パス（例: `"nodes.txt"`）。カスタムノードGit URL一覧ファイル | 未指定時はカスタムノード追加なし |
@@ -169,9 +185,9 @@ erDiagram
 | `$.jobs[*].width` / `height` | 数値 | 任意 | 可 | `null` | 正の偶数。`null` 時は `model_manifest.json` 既定値を使用 | テスト960x544 / 本番1344x768 |
 | `$.jobs[*].duration_sec` | 数値 | 任意 | 可 | `null` | MiniMax H3 対象範囲 `4` 〜 `15` 秒（`null` 時は既定値） | モデル別範囲はマニフェストで制御 |
 | `$.jobs[*].seed` | 数値 | 任意 | 可 | `null` | 0以上の整数（`null` 時は実行時に乱数採番しログへ記録） | 再現性確保のため記録必須 |
-| `$.jobs[*].input_assets` | オブジェクト | 任意 | 可 | `{}` | FL2VA開始/終了画像やRef2VA参照素材のローカルまたはDrive相対パス | 用途別任意入力 |
+| `$.jobs[*].input_assets` | オブジェクト | 任意 | 可 | `{}` | 論理キー（`start_image`, `end_image`, `ref_images` 等）を値 `{ "source": "local" \| "drive", "path": "..." }` へ写像するマップ。`local` はローカルファイルパス、`drive` は `<drive_root>/input/` 基準の相対パス（親参照 `..` 禁止） | Windows パス衝突回避のため `source` 明示方式を採用 |
 
-#### C. バッチ実行状態・監査ログ（`logs/batch_<batch_id>.json`）
+#### C. バッチ実行状態・監査ログ（`logs/batch_<batch_id>_<execution_id>.json`）
 
 | JSONパス / フィールド名 | データ型 | 必須性 | NULL可 | デフォルト値 | 許容値・制約条件 | 互換性・移行メモ |
 | :--- | :--- | :---: | :---: | :--- | :--- | :--- |
@@ -192,9 +208,28 @@ erDiagram
 | `$.batch_id` | 文字列 | 必須 | 不可 | なし | 実行中の `batch_id` | 競合時のエラーメッセージ表示用 |
 | `$.pid` | 数値 | 必須 | 不可 | なし | 実行中ローカルプロセスのOS PID | 生存確認による stale 判定用 |
 | `$.hostname` | 文字列 | 必須 | 不可 | なし | ローカル端末ホスト名 | 共有ドライブ等での誤判定防止 |
-| `$.session_name` | 文字列 | 任意 | 可 | `null` | 確保した Colab セッション名（`colab new` 後に更新） | 残存VM調査用 |
+| `$.session_name` | 文字列 | 任意 | 可 | `null` | `colab new` 呼び出し直前（セッション名採番時点）に原子置換で記録する Colab セッション名 | クラッシュ時の stale lock 調査用 |
 | `$.acquired_at` | 文字列 | 必須 | 不可 | なし | ISO 8601 日時文字列 | 経過時間確認用 |
-| `$.ttl_sec` | 数値 | 必須 | 不可 | `18000` | 正の整数（秒）。最大バッチ時間4時間＋起動/停止猶予1時間 | stale lock 判定基準 |
+| `$.ttl_sec` | 数値 | 必須 | 不可 | `18000` | 正の整数（秒）。最大バッチ時間4時間＋起動/停止猶予1時間 | PID生存中ハング検知の警告閾値 |
+
+#### E. 月次CU履歴追記ログ（`logs/cu_usage_history.jsonl`）
+
+1実行（1セッション）完了ごとに1行のJSONオブジェクトをUTF-8・LFで末尾追記する。
+
+| フィールド名 | データ型 | 必須性 | NULL可 | デフォルト値 | 許容値・制約条件 | 互換性・移行メモ |
+| :--- | :--- | :---: | :---: | :--- | :--- | :--- |
+| `schema_version` | 文字列 | 必須 | 不可 | `"1.0"` | `"1.0"` | スキーマ判定用 |
+| `execution_id` | 文字列 | 必須 | 不可 | なし | UUID等の一意実行ID（`BATCH_EXECUTION_LOG.execution_id` と一致） | 相関キー |
+| `batch_id` | 文字列 | 必須 | 不可 | なし | 実行対象バッチID | 集計キー |
+| `model_name` | 文字列 | 必須 | 不可 | なし | 実行対象モデル名（例: `"minimax_h3"`） | モデル別コスト分析用 |
+| `session_name` | 文字列 | 任意 | 可 | `null` | Colab セッション名（VM未起動中断時は `null`） | 監査照合用 |
+| `cu_before` | 浮動小数点 | 任意 | 可 | `null` | 実行前 `colab usage` 残高（0.0以上） | 計測不可時は `null` |
+| `cu_after` | 浮動小数点 | 任意 | 可 | `null` | 停止後 `colab usage` 残高（0.0以上） | 計測不可時は `null` |
+| `cu_consumed` | 浮動小数点 | 任意 | 可 | `null` | `cu_before - cu_after`（いずれかが `null` 時は `null`） | 月間200 CU消化計算用 |
+| `duration_sec` | 浮動小数点 | 必須 | 不可 | なし | 0.0以上の秒数（セッション稼働時間） | 実測レート（CU/時）算出用 |
+| `succeeded_count` | 整数 | 必須 | 不可 | `0` | 0以上の整数 | 1本あたり単価算出用 |
+| `failed_count` | 整数 | 必須 | 不可 | `0` | 0以上の整数 | 失敗率把握用 |
+| `recorded_at` | 文字列 | 必須 | 不可 | なし | ISO 8601 タイムゾーン付き日時文字列 | 月次集計基準時刻 |
 
 ---
 
@@ -202,7 +237,7 @@ erDiagram
 
 ### 3.1 原子的書き込み契約 (Atomic Write Contract)
 
-`logs/batch_<batch_id>.json` の状態更新時は、異常終了やプロセス強制終了による JSON 破損を防止するため、以下の手順を必須とする。
+`logs/batch_<batch_id>_<execution_id>.json` の状態更新および `state/active_batch.lock` の `session_name` 更新時は、異常終了やプロセス強制終了による JSON 破損を防止するため、以下の手順を必須とする。
 
 1. **一時ファイル生成**: 対象ファイルと同一ディレクトリ内に一時ファイル（`<target>.tmp.<pid>`）を作成し、UTF-8（BOMなし）・LF で JSON 全量を書き出す。既存の一時ファイルがあれば上書きする。
 2. **物理書き込み保証**: ファイルフラッシュ後に `os.fsync` を実行し、OS キャッシュからディスクへの物理書き込みを完了させる。同期失敗時は一時ファイルを削除し、正本ファイルを変更せずエラーを返却する。
@@ -217,10 +252,14 @@ erDiagram
 Google AI Pro 単一契約（月間200 CU・単一A100スポット利用前提）での多重バッチ同時起動を防止する。
 
 - **ロック対象ファイル**: `state/active_batch.lock`
+- **排他作成と更新分離**: 新規ロック取得時は TOCTOU 競合を防止するため、`O_CREAT | O_EXCL`（Python の `open(..., "x")` 相当）による排他ファイル作成を必須とする。その後の `session_name` 追記（`colab new` 呼び出し直前）のみ 3.1 の原子置換（`os.replace`）を適用する。
 - **ロック識別情報**: `lock_id`、`batch_id`、`pid`、`hostname`、`session_name`、`acquired_at`、`ttl_sec`（機密情報は含めない）
 - **ロック獲得待ち方針**: ノンブロッキング（即座に成否を判定）。長時間バッチ同士の無意味な待機による古いCU計測値での起動を防ぐため、待機キューイングは行わない。
 - **取得失敗時の処理**: 既存ロックが有効な場合、実行中 `batch_id`・`pid`・`acquired_at` をエラーメッセージへ出力して即時異常終了する（VM起動は行わない）。
-- **stale lock の判定・回収**: 同一ホスト上で `pid` のプロセスが存在しない、かつ経過時間が `ttl_sec` を超過している（または明示的確認で `colab sessions` に該当セッションが存在しない）場合のみ stale と判定する。自動回収は PID 不在が確実な場合に限定し、残存セッション疑いがある場合は操作者へ `colab sessions` 確認を促して中断する。
+- **stale lock の判定・回収**:
+  - **自動回収可能条件**: 同一ホスト上で `pid` のプロセスが存在しない **かつ** `colab sessions` に対象 `session_name` が存在しない（`session_name` が `null` の場合は `pid` 不在のみで回収可）。これにより、異常クラッシュ直後であっても `ttl_sec` 経過を待たず安全に再実行できる。
+  - **残存セッション疑い時の扱い**: `pid` 不在であっても `colab sessions` に `session_name` が残存している場合は自動回収せず、孤立VMによる課金継続を防ぐため操作者へ `colab stop` / `colab sessions` 確認を促して中断する。
+  - **`ttl_sec` の役割**: 実行中 `pid` が生存しているにもかかわらず処理がハングしている異常状態を検知し、操作者へ警告を出力するための監視閾値として扱う。
 - **正常終了時の解放**: `colab stop` 完了および監査ログ確定後、自プロセスが保持する `lock_id` と一致することを確認した上でロックファイルを削除する。
 - **異常終了・強制終了時の扱い**: `try ... finally` 内で可能な限り `colab stop` 後に解放する。OSクラッシュや `SIGKILL` 等で残留した場合は、次回起動時の stale lock 判定および `colab sessions` 照合により安全に回収する。
 
@@ -258,3 +297,4 @@ Google AI Pro 単一契約（月間200 CU・単一A100スポット利用前提�
 | 版数 | 改訂日 | 変更者 | 変更内容・変更理由 (Why) |
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | 基本設計書（CCR-BD-001）およびVM配送方針に基づき初版作成 |
+| Rev.1.1 | 2026-11-22 | xzyozi | 検収指摘反映（ログファイル名の一意化、ER図属性名統一、`cu_usage_history.jsonl` 定義、`output_prefix`・`input_assets`・`session_name` 記録・stale lock 判定強化） |
