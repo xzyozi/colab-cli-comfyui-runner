@@ -17,6 +17,7 @@ related_documents:
   - "CCR-BD-001 基本設計書（相対パス: ./CCR-BD-001_基本設計書.md）"
   - "CCR-DS-001 データ構造仕様書（相対パス: ./CCR-DS-001_データ構造仕様書.md）"
   - "CCR-ENV-001 環境・開発基盤仕様書（相対パス: ../setup/CCR-ENV-001_環境・開発基盤仕様書.md）"
+  - "CCR-TEST-001 テスト計画・結果報告書（相対パス: ../test/CCR-TEST-001_テスト計画・結果報告書.md）"
 ---
 
 # 詳細設計書（機能・モジュール制御仕様）
@@ -298,14 +299,14 @@ sequenceDiagram
 
 | 要件ID | 対象機能ID | 保証すべき振る舞い・条件 | 検証観点 | 対応テストケース |
 | :--- | :--- | :--- | :--- | :--- |
-| `TR-001` | `F-001` | 有効ロック存在時および CU不足・残存セッション存在時にVMを起動せず即 `Aborted` となること（stale lock 回収条件含む） | 正常 / 境界 / 異常 / 排他 | CCR-TEST-001（作成予定） |
-| `TR-002` | `F-002` | `colab new` 直前にロックへ `session_name` が原子書込され、`colab new` → `colab drivemount` → 動的 `ProxyCommand` によるSSH転送の順で実行されること（途中失敗時も `F-006` 停止可能） | 正常 / 異常 / 順序保証 | CCR-TEST-001（作成予定） |
-| `TR-003` | `F-003` | `setup.sh` および `workflows/<model_name>/` 依存定義のみが動的 `ProxyCommand` 経由で `/tmp/ccr_setup/` へ配送され、Driveモデル欠落時に即停止すること | 正常 / 異常 / 配送分離 | CCR-TEST-001（作成予定） |
-| `TR-004` | `F-004` | テンプレートJSONが非破壊でパラメータ・`output_prefix`・`input_assets`（ローカルは `/upload/image`、Driveは `drive_assets/`）注入され、WS切断時も `/history/{prompt_id}` で重複投入せず結果取得できること | 正常 / 再試行 / 冪等性 | CCR-TEST-001（作成予定） |
-| `TR-005` | `F-004` | 単一ジョブタイムアウト超過時に `/interrupt` を試行し、次のジョブまたは安全停止へ適切に遷移すること | 境界 / 異常 / タイムアウト | CCR-TEST-001（作成予定） |
-| `TR-006` | `F-005` | `max_batch_duration_sec` 超過時に未投入ジョブが `skipped` と記録され、各完了ジョブが原子書き込みで永続化されること | 境界 / 永続化 | CCR-TEST-001（作成予定） |
-| `TR-007` | `F-005`, `F-006` | 推論エラー・`SIGINT` 割り込み・`F-003` 失敗のいずれでも `finally` 経由で `colab stop` と `colab sessions` 空確認・ロック解放が実行されること | 異常 / 割り込み / 安全回路 | CCR-TEST-001（作成予定） |
-| `TR-008` | `F-006` | `colab stop` 失敗時に最大3回リトライし、なお残存する場合は `ERR-STOP-FAILURE` として警告出力すること | 異常 / リトライ | CCR-TEST-001（作成予定） |
+| `TR-001` | `F-001` | 有効ロック存在時および CU不足・残存セッション存在時にVMを起動せず即 `Aborted` となること（stale lock 回収条件含む） | 正常 / 境界 / 異常 / 排他 | [CCR-TEST-001](../test/CCR-TEST-001_テスト計画・結果報告書.md) (`TC-L1-001`, `TC-L1-102`〜`103`) |
+| `TR-002` | `F-002` | `colab new` 直前にロックへ `session_name` が原子書込され、`colab new` → `colab drivemount` → 動的 `ProxyCommand` によるSSH転送の順で実行されること（途中失敗時も `F-006` 停止可能） | 正常 / 異常 / 順序保証 | [CCR-TEST-001](../test/CCR-TEST-001_テスト計画・結果報告書.md) (`TC-L1-002`) |
+| `TR-003` | `F-003` | `setup.sh` および `workflows/<model_name>/` 依存定義のみが動的 `ProxyCommand` 経由で `/tmp/ccr_setup/` へ配送され、Driveモデル欠落時に即停止すること | 正常 / 異常 / 配送分離 | [CCR-TEST-001](../test/CCR-TEST-001_テスト計画・結果報告書.md) (`TC-L1-003`) |
+| `TR-004` | `F-004` | テンプレートJSONが非破壊でパラメータ・`output_prefix`・`input_assets`（ローカルは `/upload/image`、Driveは `drive_assets/`）注入され、WS切断時も `/history/{prompt_id}` で重複投入せず結果取得できること | 正常 / 再試行 / 冪等性 | [CCR-TEST-001](../test/CCR-TEST-001_テスト計画・結果報告書.md) (`TC-L1-004`〜`006`) |
+| `TR-005` | `F-004` | 単一ジョブタイムアウト超過時に `/interrupt` を試行し、次のジョブまたは安全停止へ適切に遷移すること | 境界 / 異常 / タイムアウト | [CCR-TEST-001](../test/CCR-TEST-001_テスト計画・結果報告書.md) (`TC-L1-007`) |
+| `TR-006` | `F-005` | `max_batch_duration_sec` 超過時に未投入ジョブが `skipped` と記録され、各完了ジョブが原子書き込みで永続化されること | 境界 / 永続化 | [CCR-TEST-001](../test/CCR-TEST-001_テスト計画・結果報告書.md) (`TC-L1-008`, `TC-L1-101`) |
+| `TR-007` | `F-005`, `F-006` | 推論エラー・`SIGINT` 割り込み・`F-003` 失敗のいずれでも `finally` 経由で `colab stop` と `colab sessions` 空確認・ロック解放が実行されること | 異常 / 割り込み / 安全回路 | [CCR-TEST-001](../test/CCR-TEST-001_テスト計画・結果報告書.md) (`TC-L1-009`, `TC-L3-003`) |
+| `TR-008` | `F-006` | `colab stop` 失敗時に最大3回リトライし、なお残存する場合は `ERR-STOP-FAILURE` として警告出力すること | 異常 / リトライ | [CCR-TEST-001](../test/CCR-TEST-001_テスト計画・結果報告書.md) (`TC-L1-010`) |
 
 ### 5.2 適用する品質ゲート
 

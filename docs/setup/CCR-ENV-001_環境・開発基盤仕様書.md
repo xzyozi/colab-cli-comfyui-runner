@@ -15,6 +15,9 @@ related_documents:
   - "ドキュメントガバナンス（相対パス: ../README.md）"
   - "用語集（相対パス: ../../CONTEXT.md）"
   - "CCR-BD-001 基本設計書（相対パス: ../design/CCR-BD-001_基本設計書.md）"
+  - "CCR-SETUP-001 環境構築手順書（相対パス: ./CCR-SETUP-001_環境構築手順書.md）"
+  - "CCR-OP-001 運用手順書（相対パス: ../how-to/CCR-OP-001_運用手順書.md）"
+  - "CCR-TEST-001 テスト計画・結果報告書（相対パス: ../test/CCR-TEST-001_テスト計画・結果報告書.md）"
   - "Python プロジェクト環境構築手順書 (uv版)（相対パス: ./python_setup.md）"
   - "Git Flow 運用規約 ＆ ブランチ自動管理ガイド（相対パス: ./git_flow_and_branch_policy.md）"
   - "ドキュメント検証スクリプト運用（相対パス: ./doc_validation.md）"
@@ -142,8 +145,9 @@ related_documents:
 
 ## 7. 関連文書
 
-- **構築手順**: [Python プロジェクト環境構築手順書 (uv版)](./python_setup.md)
-- **設計書**: [CCR-BD-001 基本設計書](../design/CCR-BD-001_基本設計書.md)
+- **構築手順**: [CCR-SETUP-001 環境構築手順書](./CCR-SETUP-001_環境構築手順書.md)、[Python プロジェクト環境構築手順書 (uv版)](./python_setup.md)
+- **設計書**: [CCR-BD-001 基本設計書](../design/CCR-BD-001_基本設計書.md)、[CCR-DD-001 詳細設計書](../design/CCR-DD-001_詳細設計書.md)、[CCR-DS-001 データ構造仕様書](../design/CCR-DS-001_データ構造仕様書.md)
+- **運用・テスト**: [CCR-OP-001 運用手順書](../how-to/CCR-OP-001_運用手順書.md)、[CCR-TEST-001 テスト計画・結果報告書](../test/CCR-TEST-001_テスト計画・結果報告書.md)
 - **ガバナンス**: [ドキュメントガバナンス](../README.md)、[用語集](../../CONTEXT.md)
 - **運用・検証ガイド**: [Git Flow 運用規約](./git_flow_and_branch_policy.md)、[ドキュメント検証スクリプト運用](./doc_validation.md)、[Mermaid CI 検証運用](./mermaid_ci_validation.md)、[ミューテーションテスト導入・運用ガイド](./mutation_testing_setup.md)
 
