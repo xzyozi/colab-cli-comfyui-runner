@@ -5,7 +5,7 @@ document_number: "CCR-ENV-001"
 document_role: "normative"
 ssot_scope: "environment"
 status: "draft"
-version: "1.0"
+version: "1.1"
 created_at: "2026-11-22"
 updated_at: "2026-11-22"
 author: "xzyozi"
@@ -80,7 +80,7 @@ related_documents:
 ### 4.2 ツールチェーン・依存関係
 
 - **ローカル開発・依存管理**: `uv` を正本とし、`pyproject.toml` と `uv.lock` で依存を管理する。開発用依存は `[dependency-groups] dev`（`pytest`, `pytest-cov`, `ruff`, `mypy`）を `uv sync --group dev` で同期する。
-- **VM・SSH制御**: `google-colab-cli`（Google公式）を使用し、VM確保（`--gpu A100 --high-mem`）、SSHプロキシ、Driveマウント、CU確認（`colab usage`）、停止（`colab stop` / `--rm`）を行う。
+- **VM・SSH制御**: `google-colab-cli`（Google公式）を使用し、VM確保（`colab new --gpu A100 --high-mem`）、SSHプロキシ、Driveマウント（`colab drivemount`）、CU・セッション確認（`colab usage` / `colab sessions`）、停止（`colab stop` / `--rm`）を行う。
 - **Colab側環境構築**: `comfy-cli`（`uv` 連携）でComfyUI環境を高速構築・起動し、Google Driveへのシンボリックリンクによりモデル再ダウンロードを回避する（VM起動から待ち受け完了まで3分以内を目標）。
 - **動画生成モデルスタック（MiniMax H3・合計約42.5GB・Drive永続化対象）**:
 
@@ -130,7 +130,7 @@ related_documents:
 | :--- | :--- | :--- | :--- |
 | ローカルPython・品質ツール動作 | `uv sync --group dev` 後に `QG-001`〜`QG-004` を実行 | 全ゲートがエラー0件で終了すること | CIワークフロー実行履歴・ローカル実行結果 |
 | ドキュメント・Mermaid整合 | `QG-005` および `QG-006` のローカル実行またはPR CI実行 | エラー0件で終了すること | GitHub Actions `Validate docs` / `Validate Mermaid` ログ |
-| Colab接続・SSH設定 | `colab usage` および `colab up --gpu A100 --high-mem` 接続確認 | SSH接続・ポート転送 `localhost:8188` が疎通すること | フェーズ1実測ログ（`docs/logs/` 等へ記録予定） |
+| Colab接続・SSH設定 | `colab usage`・`colab sessions` および `colab new --gpu A100 --high-mem`、`colab drivemount` 接続確認 | SSH接続・Driveマウント・ポート転送 `localhost:8188` が疎通すること | フェーズ1実測ログ（`docs/logs/` 等へ記録予定） |
 | CU残高・実測レート把握 | 実行前後の `colab usage` 差分計測（フェーズ1） | 実測CU/時と起動〜推論所要時間が記録されること | フェーズ1ベンチマーク記録 |
 
 ## 6. 例外・適用差異
@@ -163,3 +163,4 @@ related_documents:
 | 版数 | 改訂日 | 変更者 | 変更内容・変更理由 (Why) |
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | 要件定義書 Ver 2.0 およびリポジトリ実態に基づき初版作成 |
+| Rev.1.1 | 2026-11-22 | xzyozi | `google-colab-cli` コマンド表記（`colab new`・`colab drivemount`・`colab sessions`）を実態に整合 |

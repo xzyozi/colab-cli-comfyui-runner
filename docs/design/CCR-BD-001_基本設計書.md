@@ -5,7 +5,7 @@ document_number: "CCR-BD-001"
 document_role: "normative"
 ssot_scope: "system_architecture"
 status: "draft"
-version: "1.0"
+version: "1.1"
 created_at: "2026-11-22"
 updated_at: "2026-11-22"
 author: "xzyozi"
@@ -52,7 +52,7 @@ related_documents:
 | `NFR-003` | コスト | 月間稼働・CU枠管理 | 月間200 CU枠でA100を約30〜37時間/月稼働（標準設定で月間250〜450本目安）、未消化CUの繰越不可を前提に管理 | `colab usage` 実行前後差分と月次集計 | CCR-ENV-001 / 本書 |
 | `NFR-004` | 可用性 | セッション制限耐性 | 最大24時間連続上限・アイドル切断（60〜90分）を前提に、1バッチを2〜4時間以内で完結 | バッチ単位の実行時間上限設定とログ確認 | 本書 |
 | `NFR-005` | 耐障害性 | 障害時のデータ保全 | VM強制終了・エラー発生時も、生成済みMP4およびモデル資産がGoogle Drive側に残存 | Drive `output/` シンボリックリンク直結の検証 | 本書 |
-| `NFR-006` | 安全回路 | 課金暴走防止 | 正常終了・異常終了・割込のいずれでも必ず `colab stop` を実行 | `try ... finally` / `trap` 制御の終了確認・`colab usage` | 本書 |
+| `NFR-006` | 安全回路 | 課金暴走防止 | 正常終了・異常終了・割込のいずれでも必ず `colab stop` を実行 | `try ... finally` / `trap` 制御の終了確認、`colab sessions`（アクティブセッション空確認）および `colab usage` | 本書 |
 | `NFR-007` | 法務・認証 | 認証・ライセンス遵守 | 対話型OAuth初回認証のローカル保持、MiniMax H3 Community License遵守 | 初回構築確認および帰属表示・利用条件チェック | CCR-ENV-001 |
 
 品質ゲートの実行条件および合格基準は [CCR-ENV-001 環境・開発基盤仕様書](../setup/CCR-ENV-001_環境・開発基盤仕様書.md) 4.4 を正本とし、本書では参照先のみを定める。テストケースと実行結果は今後作成するテスト計画・結果報告書へ委譲する。
@@ -82,7 +82,9 @@ related_documents:
 
 ### 2.1 全体構造とデータフロー
 
-本システムは、**ローカルPC制御層**、**SSHトンネル／リモート実行境界**、**Google Colab GPU実行層**、**Google Drive永続化層**の4層で構成される。ローカル側がVMの起動からバッチ投入・停止までを主導し、Colab側はステートレスな計算ノードとして動作し、永続資産と成果物はすべてGoogle Drive側へ直結して保全する。
+本システムは、**ローカルPC制御層**、**SSHトンネル／リモート実行境界**、**Google Colab GPU実行層**、**Google Drive永続化層**の4層で構成される。ローカル側がVMの起動・Driveマウントからバッチ投入・停止までを主導し、Colab側はステートレスな計算ノードとして動作し、永続資産と成果物はすべてGoogle Drive側へ直結して保全する。
+
+下図において、実線（`-->`）はフェーズ2（無人バッチ）の標準データ・制御フロー、破線（`-.->`）はフェーズ1（GUI手動検証・任意取得）の導線を示す。
 
 ```mermaid
 flowchart TD
@@ -105,13 +107,15 @@ flowchart TD
         DriveOutput[("生成済みMP4成果物（output/ 直結）")]
     end
 
-    Operator -->|"フェーズ1 GUI確認 / フェーズ2 バッチ起動"| BatchOrch
-    BatchOrch -->|"1. CU残高確認・起動/停止指示"| VMCtrl
-    VMCtrl -->|"2. VM確保・SSH接続・ポート転送"| SetupEnv
-    SetupEnv -->|"3. モデル/出力のシンボリックリンク接続"| DriveModels
-    SetupEnv -->|"3. output/ 直結"| DriveOutput
+    Operator -.->|"フェーズ1: 直接起動・Driveマウント"| VMCtrl
+    Operator -.->|"フェーズ1: ブラウザ操作・JSON保存"| ComfyCore
+    Operator -->|"フェーズ2: バッチ起動"| BatchOrch
+    BatchOrch -->|"1. CU・セッション確認・起動/停止指示"| VMCtrl
+    VMCtrl -->|"2. VM新規作成(colab new)・Driveマウント・SSH転送"| SetupEnv
+    SetupEnv -->|"3. マウント済みパスの存在確認・リンク接続"| DriveModels
+    SetupEnv -->|"3. output/ リンク直結"| DriveOutput
     SetupEnv -->|"4. 待ち受け開始"| ComfyCore
-    WfRepo -->|"5. workflow_api.json とプロンプト群"| BatchOrch
+    WfRepo -->|"5. workflow_api.json とプロンプト・依存定義"| BatchOrch
     BatchOrch -->|"6. ジョブ投入・完了監視"| ApiAdapter
     ApiAdapter -->|"7. SSHポート転送経由 API指示・状態取得"| ComfyCore
     ComfyCore -->|"8. 推論完了と同時に自動書込"| DriveOutput
@@ -122,12 +126,12 @@ flowchart TD
 
 | コンポーネントID | コンポーネント名 | 担当領域・主要責務 | 依存先・依存方向 / 公開インターフェース | 関連詳細設計書 |
 | :--- | :--- | :--- | :--- | :--- |
-| `C-001` | VM・CUライフサイクル制御 | `google-colab-cli` を用いたCU残高確認（`colab usage`）、A100 High-RAM VMの起動（`colab up`）、SSHポート転送確立、確実な停止（`colab stop` / `--rm`） | `google-colab-cli` / OpenSSH に依存。`C-005` へライフサイクル操作I/Fを提供 | CCR-DD-001（作成予定） |
-| `C-002` | Colab環境復元・Driveリンク管理 | Colab VM上での `comfy-cli`（`uv`連携）によるComfyUI構築、高速化ライブラリ導入、Google Driveマウントおよびモデル/`output/` シンボリックリンク作成 | Google Drive マウント領域・`comfy-cli` に依存。`C-001` からSSH経由で起動される | CCR-DD-001（作成予定） |
+| `C-001` | VM・CUライフサイクル制御 | `google-colab-cli` を用いたCU残高確認（`colab usage`）、アクティブセッション確認（`colab sessions`）、A100 High-RAM VMの新規作成（`colab new`）、Driveマウント実行（`colab drivemount`）、SSHポート転送確立、確実な停止（`colab stop` / `--rm`） | `google-colab-cli` / OpenSSH に依存。`C-005` へライフサイクル操作I/Fを提供 | CCR-DD-001（作成予定） |
+| `C-002` | Colab環境復元・Driveリンク管理 | Colab VM上での `comfy-cli`（`uv`連携）によるComfyUI構築、高速化ライブラリおよびモデル別依存定義の汎用適用、マウント済みDriveパス（`/content/drive/MyDrive/...`）の存在チェックとモデル/`output/` シンボリックリンク作成 | マウント済みGoogle Drive領域・`comfy-cli` に依存。`C-001` による `colab drivemount` 完了後にSSH経由で起動される | CCR-DD-001（作成予定） |
 | `C-003` | 推論エンジン・モデル実行基盤 | ComfyUIサーバ待ち受け、MiniMax H3（FL2VA/Ref2VA量子化＋Qwen3VL＋Video/Audio VAE＋Turbo LoRA）および SageAttention / TeaCache によるMP4生成 | `C-002` が構築したリンク先（モデル・出力）を参照。`localhost:8188` でHTTP/WS APIおよびWeb UIを公開 | CCR-DD-001（作成予定） |
 | `C-004` | ワークフロー・API制御アダプタ | SSHポート転送越しに ComfyUI API（標準HTTP/WS API または `ComfyScript`）へテンプレートJSON＋パラメータを投入し、進捗・完了・エラーを監視 | `C-003`（`localhost:8188`）へ接続。`C-005` からジョブ投入単位で呼び出される | CCR-DD-001（作成予定） |
-| `C-005` | バッチオーケストレータ | 起動前CUチェック、VM起動、環境復元呼び出し、5〜10本単位の連続投入ループ、処理時間監視、正常/異常終了時の `colab stop` 保証を統括 | `C-001`, `C-004`, `C-006` を統合制御。ローカル操作者のCLIエントリポイント | CCR-DD-001（作成予定） |
-| `C-006` | ワークフロー定義・成果物管理 | `workflows/<model_name>/` 配下のAPI用JSON・モデル固有パラメータ管理、および Drive `output/` 直結と必要時の `colab download` / `scp` / `rsync` 取得導線 | モデル実体はDrive永続領域を参照。`C-005` へモデル定義を提供し、モデル差し替え境界を担う | CCR-DS-001（作成予定） |
+| `C-005` | バッチオーケストレータ | 起動前CU・セッションチェック、VM起動、Driveマウント指示、環境復元呼び出し、5〜10本単位の連続投入ループ、処理時間監視、正常/異常終了時の `colab stop` 保証を統括 | `C-001`, `C-004`, `C-006` を統合制御。ローカル操作者のCLIエントリポイント | CCR-DD-001（作成予定） |
+| `C-006` | ワークフロー定義・成果物管理 | `workflows/<model_name>/` 配下のAPI用JSON・モデル固有パラメータ・モデル固有のカスタムノード/追加Pythonパッケージ依存定義管理、および Drive `output/` 直結と必要時の `colab download` / `scp` / `rsync` 取得導線 | モデル実体はDrive永続領域を参照。`C-005` へモデル定義を提供し、モデル差し替え境界を担う | CCR-DS-001（作成予定） |
 
 ※ API制御方式（標準HTTP/WS API と `ComfyScript` のどちらを第一実装とするか）の比較・決定は、詳細設計フェーズまたはADRにて確定する。
 
@@ -139,8 +143,8 @@ flowchart TD
 
 - **対応OS・ランタイム要件・依存管理の正本**: [CCR-ENV-001 環境・開発基盤仕様書](../setup/CCR-ENV-001_環境・開発基盤仕様書.md) 2章および4.1〜4.2章に従う。
 - **実行エントリポイント**:
-  - **フェーズ1（GUI検証）**: ローカル操作者が `google-colab-cli` でVM確保・SSHポート転送を張り、ブラウザで `localhost:8188` にアクセスして操作する。
-  - **フェーズ2（無人バッチ）**: ローカル制御スクリプト（`run_batch.py`）をCLIから起動し、VM確保〜Colab側 `setup.sh` 実行〜連続推論〜自動停止までを一括実行する。
+  - **フェーズ1（GUI検証）**: ローカル操作者が `google-colab-cli`（`colab new`・`colab drivemount` 等）でVM確保・Driveマウント・SSHポート転送を張り、ブラウザで `localhost:8188` にアクセスして操作する。
+  - **フェーズ2（無人バッチ）**: ローカル制御スクリプト（`run_batch.py`）をCLIから起動し、VM確保（`colab new`）〜Driveマウント（`colab drivemount`）〜Colab側 `setup.sh` 実行〜連続推論〜自動停止（`colab stop`）までを一括実行する。
 - **品質目標・品質ゲート**: 本システムはコード・ドキュメントの品質保証として [CCR-ENV-001 環境・開発基盤仕様書](../setup/CCR-ENV-001_環境・開発基盤仕様書.md) 4.4 に定義された品質ゲート（`QG-001`〜`QG-006`、およびOpt-inの `QG-007`）を適用する。
 
 ### 3.2 安全回路・システム境界方針
@@ -157,9 +161,9 @@ flowchart TD
   - VM起動・ComfyUI待ち受け待機および単一ジョブ推論にはタイムアウト上限を設け、無応答ハングによるCU空費を防止する。
   - 一時的なAPI通信瞬断に対しては有限回数の再試行を許容し、無限ループを禁止する。
 - **排他制御・競合防止**:
-  - Google AI Pro 単一契約の200 CU枠および単一A100スポット枠での運用を前提とし、ローカル側から同一契約に対する多重バッチ同時起動を抑止する（起動前 `colab usage` 確認およびロック方針はDD/DSで具体化）。
+  - Google AI Pro 単一契約の200 CU枠および単一A100スポット枠での運用を前提とし、ローカル側から同一契約に対する多重バッチ同時起動を抑止する（起動前の `colab usage` / `colab sessions` 確認およびロック方針はDD/DSで具体化）。
 - **失敗時保全契約**:
-  - **課金暴走防止**: ローカルオーケストレータ（`C-005`）およびシェルスクリプトは `try ... finally` または `trap` を必ず組み込み、推論エラー・タイムアウト・ユーザー割込（SIGINT等）のいずれで終了しても確実に `colab stop` を実行する。
+  - **課金暴走防止**: ローカルオーケストレータ（`C-005`）およびシェルスクリプトは `try ... finally` または `trap` を必ず組み込み、推論エラー・タイムアウト・ユーザー割込（SIGINT等）のいずれで終了しても確実に `colab stop` を実行し、`colab sessions` で残存セッションがないことを確認可能とする。
   - **成果物非破壊**: ComfyUIの `output/` をGoogle Driveへシンボリックリンク直結することで、バッチ途中（例: 10本中4本目完了後）でVMが強制終了されても完了済みMP4はDrive側に保全される。
 - **機密情報・監査ログ方針**:
   - OAuthトークン、SSH秘密鍵、ローカル環境固有の絶対パス等はコード・設計書・公開ログへ出力しない。
@@ -171,7 +175,8 @@ flowchart TD
 
 - **拡張時のルール（モデル非依存構成）**:
   - `scripts/` 配下にはVM制御・SSH接続・API監視・バッチループなどモデル非依存の共通基盤のみを配置する。
-  - モデル固有のワークフローJSON（`workflow_api.json`）、モデル配置定義、推論パラメータ既定値は `workflows/<model_name>/`（初期対象: `minimax_h3`）に隔離し、Wan 2.2 や LTX-2.5 等の追加時に共通基盤へ条件分岐を混入させない。
+  - モデル固有のワークフローJSON（`workflow_api.json`）、モデル配置定義、推論パラメータ既定値に加え、**モデル固有のカスタムノードや追加Pythonパッケージの依存定義（例: `requirements.txt`、`nodes.txt` 等）も `workflows/<model_name>/`（初期対象: `minimax_h3`）配下に同梱できる構成**とする。
+  - `C-002`（`setup.sh`）は指定された `workflows/<model_name>/` の依存定義ファイルを汎用的に読み込んで適用するだけとし、Wan 2.2 や LTX-2.5 等の追加時に `setup.sh` や共通基盤側へモデル名による `if` 分岐を漏らさない。
 - **段階的導入の設計方針**:
   - **フェーズ1（GUI中心ベンチマーク）**: `colab usage` 記録、初回モデル配置・Driveマウント確認、軽量設定（960x544 / 5秒 / Turbo 8step）で2本連続生成を行い、「初回ロード込み時間」「2本目の純粋推論時間」「実測消費レート（CU/時）」を確定し、`workflow_api.json` を保存する。
   - **フェーズ2（CLI + API自動化）**: フェーズ1で確定した単価・所要時間と月間200 CU上限に基づき、1バッチ5〜10本単位の無人連続生成＋自動停止運用へ移行する。
@@ -199,3 +204,4 @@ flowchart TD
 | 版数 | 改訂日 | 変更者 | 変更内容・変更理由 (Why) |
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | 要件定義書 Ver 2.0 に基づき初版作成 |
+| Rev.1.1 | 2026-11-22 | xzyozi | レビュー指摘反映（`colab new`・`colab drivemount`・`colab sessions` 整合、フェーズ1/2導線明確化、モデル固有依存境界の追加） |
