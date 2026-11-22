@@ -10,7 +10,13 @@ from pathlib import Path
 import pytest
 
 from colab_cli_comfyui_runner.colab_cli import build_ssh_options, parse_cu_usage, parse_sessions
-from colab_cli_comfyui_runner.dao import LockManager, append_cu_usage_history, atomic_write_json, read_json_file
+from colab_cli_comfyui_runner.dao import (
+    LockManager,
+    append_cu_usage_history,
+    atomic_write_json,
+    default_is_pid_alive,
+    read_json_file,
+)
 from colab_cli_comfyui_runner.errors import JobValidationError, PreflightCuError, PreflightLockError
 from colab_cli_comfyui_runner.models import (
     BatchRunRequestDto,
@@ -189,3 +195,43 @@ def test_cli_parsers_and_dynamic_ssh_options(tmp_path: Path) -> None:
     joined = " ".join(opts)
     assert "colab ssh --proxy-mode -s ccr-20261122-001 -i" in joined
     assert "StrictHostKeyChecking=no" in joined
+
+
+def test_default_is_pid_alive_and_lock_edge_cases(tmp_path: Path) -> None:
+    """OSのPID生存確認および破損ロック・別ホスト・lock_id不一致解放を検証する。"""
+    assert default_is_pid_alive(os.getpid()) is True
+    assert default_is_pid_alive(-1) is False
+    assert default_is_pid_alive(99999999) is False
+
+    lock_path = tmp_path / "state" / "active_batch.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text("{broken-json", encoding="utf-8")
+    mgr = LockManager(lock_path, is_pid_alive=lambda _p: True, hostname_provider=lambda: "host-a")
+    with pytest.raises(PreflightLockError, match="破損"):
+        mgr.acquire("b1", has_active_session=lambda _s: False)
+
+    # 別ホスト所有ロックは回収しない
+    atomic_write_json(
+        lock_path,
+        ExecutionLock(
+            lock_id="other-id",
+            batch_id="b0",
+            pid=999,
+            hostname="other-host",
+            acquired_at="2026-11-22T23:00:00+09:00",
+        ).to_dict(),
+    )
+    with pytest.raises(PreflightLockError, match="別ホスト"):
+        mgr.acquire("b1", has_active_session=lambda _s: False)
+
+    # lock_id 不一致時は他人のロックを削除しない
+    mgr.release(
+        ExecutionLock(
+            lock_id="my-id",
+            batch_id="b1",
+            pid=1,
+            hostname="host-a",
+            acquired_at="2026-11-22T23:00:00+09:00",
+        )
+    )
+    assert lock_path.exists()
