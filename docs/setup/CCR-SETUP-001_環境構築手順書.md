@@ -5,9 +5,9 @@ document_number: "CCR-SETUP-001"
 document_role: "procedure"
 ssot_scope: "environment_setup"
 status: "draft"
-version: "1.0"
+version: "1.1"
 created_at: "2026-11-22"
-updated_at: "2026-11-22"
+updated_at: "2026-11-23"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "フェーズ0（ローカル開発・認証・SSH鍵準備および約42.5GBモデルのGoogle Drive事前配置）を構築・検収する標準手順を定義するため"
@@ -55,11 +55,27 @@ related_documents:
 
 | No. | 操作・設定 | 期待結果 | 異常時の対応 |
 | :---: | :--- | :--- | :--- |
-| 1 | [Python プロジェクト環境構築手順書 (uv版)](./python_setup.md) に従い、`uv sync --group dev` でローカル仮想環境を構築する。 | エラーなく `.venv` が作成され、`google-colab-cli` 実行環境が準備できる。 | Python バージョン（`.python-version`: `3.12`）と `uv` 導入状態を確認する。 |
-| 2 | **対話型ターミナル**上で `google-colab-cli` の初回認証（例: `colab usage` または認証初期化コマンド）を実行し、ブラウザの Google OAuth フローを完了する。 | 認証トークンがローカル端末のユーザー設定領域へ保存され、`colab usage` が残高を応答する。 | `"Malformed auth code"` 発生時は非対話環境を抜け、通常の PowerShell / 端末から再認証する。 |
-| 3 | `ed25519` SSH 鍵ペアが未作成の場合、`ssh-keygen -t ed25519` でローカルユーザー領域（`~/.ssh/`）に鍵を生成する（パスフレーズ設定時は `ssh-agent` 併用）。 | 秘密鍵と公開鍵（`.pub`）が生成され、適切なファイル権限が設定される。 | 既存鍵がある場合は上書きせず、利用する鍵パスを把握する。 |
-| 4 | （フェーズ1手動GUI操作向け）`~/.ssh/config` に Colab 用設定を記述する場合、Windows 環境では `ProxyCommand` 内の `-i` に鍵の絶対パスを指定し、**必ず `Host *` ブロックより上位**に配置する。 | 手動 `ssh` 実行時に `Host *` のデフォルト設定へ吸われず鍵が解決される。 | フェーズ2（`run_batch.py`）は動的 `ProxyCommand` をCLI引数で渡すため、環境変数 `CCR_SSH_KEY_PATH` または既定鍵パスを確認する。 |
-| 5 | 疎通確認としてCPUまたは最小確認（必要に応じて `colab sessions` / `colab usage` の無課金確認、およびフェーズ1直前に1回のみ疎通）を実施する。 | `colab sessions` が一覧を返し、SSH鍵・認証が正常に機能する。 | OAuth 期限切れ時は手順2を再実施する。 |
+| 1 | [Python プロジェクト環境構築手順書 (uv版)](./python_setup.md) に従い、`uv sync --group dev` でローカル仮想環境を構築する。 | エラーなく `.venv` が作成され、ローカル Python 依存が同期される。 | Python バージョン（`.python-version`: `3.12`）と `uv` 導入状態を確認する。 |
+| 2 | 外部 CLI ツールとして `uv tool install google-colab-cli`（または `pip install google-colab-cli`）を実行し、`colab --help` が表示されることを確認する。 | `colab` コマンドが PATH から実行可能になる。 | PATH 未反映時は `uv tool update-shell` を実行し、ターミナルを再起動する。 |
+| 3 | **対話型ターミナル**（PowerShell 等）上で `colab usage` を実行する。表示された認証 URL をブラウザで開き、Google AI Pro 契約アカウントでログイン・許可して、表示された認証コードをターミナルへ貼り付ける。（※ `colab auth` は起動済みVM内へGCP権限を渡す別コマンドであり、CLI初回ログインには `colab usage` を使用する） | 認証トークンが OS 標準キーリング（Windows 資格情報マネージャ：`google-colab-cli`）へ保存され、`colab usage` が CU 残高を応答する。 | `"Malformed auth code"` 発生時は、非対話シェルを避け、前後に空白・改行が入らないよう再実行して新しい認証コードを取り直す。 |
+| 4 | OpenSSH クライアント（`ssh` / `scp`）が利用可能か確認し、`ed25519` 鍵が未作成の場合は `ssh-keygen -t ed25519` で `~/.ssh/` に鍵を生成する。 | `ssh -V` が応答し、秘密鍵と公開鍵（`.pub`）が生成される。 | Windows で `ssh`/`scp` 未導入時は「Windows のオプション機能」または Git for Windows 等で OpenSSH クライアントを導入し PATH を通す。 |
+| 5 | （フェーズ1手動GUI操作向け）`~/.ssh/config` に Colab 用設定を記述する場合、Windows 環境では `ProxyCommand` 内の `-i` に鍵の絶対パスを指定し、**必ず `Host *` ブロックより上位**に配置する。 | 手動 `ssh` 実行時に `Host *` のデフォルト設定へ吸われず鍵が解決される。 | フェーズ2（`run_batch.py`）は動的 `ProxyCommand` をCLI引数で渡すため、環境変数 `CCR_SSH_KEY_PATH` または既定鍵パスを確認する。 |
+| 6 | 無課金確認として `colab sessions` および `colab usage` を実行する。 | エラーなくセッション一覧と CU 残高が返る（2回目以降はブラウザ認証不要）。 | OAuth 期限切れ時は手順3を再実施する。 |
+
+```powershell
+# フェーズ0 ローカル導入・OAuth認証コマンド例（ご自身の対話型 PowerShell で実行）
+uv sync --group dev
+uv tool install google-colab-cli
+colab --help
+
+# 初回 OAuth 認証（表示された URL をブラウザで開き、認証コードを貼り付ける）
+colab usage
+colab sessions
+
+# OpenSSH 確認と ed25519 鍵生成（未作成の場合）
+ssh -V
+ssh-keygen -t ed25519
+```
 
 ### 3.2 約 42.5 GB モデルの Google Drive 事前配置手順
 
@@ -110,8 +126,8 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 
 | ID | 対象手順 | 症状・差異 | 原因・制約 | 対応 | 再発防止・解除条件 |
 | :---: | :--- | :--- | :--- | :--- | :--- |
-| `EX-SETUP-001` | 3.1 手順2 | `"Malformed auth code"` で認証失敗 | 非対話シェル・スクリプト経由でOAuth URLを開いた | 通常の対話型ターミナルから単体で実行する | 初回認証後はローカルキャッシュ更新で解消 |
-| `EX-SETUP-002` | 3.1 手順4 | Windows で `Permission denied (publickey)` | `~/.ssh/config` の `Host *` より下に Colab 設定がある、または相対パス指定 | Colab ブロックを `Host *` より上位に移動し絶対パスを指定（フェーズ2は動的引数を使用） | 手動設定見直し完了で解消 |
+| `EX-SETUP-001` | 3.1 手順3 | `"Malformed auth code"` で認証失敗 | 非対話シェル実行、コード期限切れ、または空白・改行混入 | 対話型ターミナルから `colab usage` を再実行し新しいコードを取得（壊れたトークン残留時は OS キーリングの `google-colab-cli` または `~/.config/colab-cli/token.json` を削除して再認証） | 初回認証成功・OSキーリング保存で解消 |
+| `EX-SETUP-002` | 3.1 手順5 | Windows で `Permission denied (publickey)` | `~/.ssh/config` の `Host *` より下に Colab 設定がある、または相対パス指定 | Colab ブロックを `Host *` より上位に移動し絶対パスを指定（フェーズ2は動的引数を使用） | 手動設定見直し完了で解消 |
 
 ## 7. 関連文書
 
@@ -134,3 +150,4 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 | 版数 | 改訂日 | 変更者 | 変更内容・変更理由 (Why) |
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | フェーズ0のローカル準備・OAuth/SSH・Drive事前配置手順として初版作成 |
+| Rev.1.1 | 2026-11-23 | xzyozi | `uv tool install google-colab-cli` の導入手順、対話型 OAuth 認証手順、OpenSSH 確認手順を追記 |

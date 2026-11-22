@@ -5,9 +5,9 @@ document_number: "CCR-ENV-001"
 document_role: "normative"
 ssot_scope: "environment"
 status: "draft"
-version: "1.1"
+version: "1.2"
 created_at: "2026-11-22"
-updated_at: "2026-11-22"
+updated_at: "2026-11-23"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "colab-cli-comfyui-runner の開発・検証・実行環境（ローカル制御端末、Google Colab A100、Google Drive、CI/品質ゲート）について、固定条件と必要構成を定義するため"
@@ -83,7 +83,7 @@ related_documents:
 ### 4.2 ツールチェーン・依存関係
 
 - **ローカル開発・依存管理**: `uv` を正本とし、`pyproject.toml` と `uv.lock` で依存を管理する。開発用依存は `[dependency-groups] dev`（`pytest`, `pytest-cov`, `ruff`, `mypy`）を `uv sync --group dev` で同期する。
-- **VM・SSH制御**: `google-colab-cli`（Google公式）を使用し、VM確保（`colab new --gpu A100 --high-mem`）、SSHプロキシ、Driveマウント（`colab drivemount`）、CU・セッション確認（`colab usage` / `colab sessions`）、停止（`colab stop` / `--rm`）を行う。
+- **VM・SSH制御**: `google-colab-cli`（Google公式、ローカル端末へ `uv tool install google-colab-cli` 等で導入する外部CLI）を使用し、VM確保（`colab new --gpu A100 --high-mem`）、SSHプロキシ、Driveマウント（`colab drivemount`）、CU・セッション確認（`colab usage` / `colab sessions`）、停止（`colab stop` / `--rm`）を行う。
 - **Colab側環境構築**: `comfy-cli`（`uv` 連携）でComfyUI環境を高速構築・起動し、Google Driveへのシンボリックリンクによりモデル再ダウンロードを回避する（VM起動から待ち受け完了まで3分以内を目標）。
 - **動画生成モデルスタック（MiniMax H3・合計約42.5GB・Drive永続化対象）**:
 
@@ -168,3 +168,4 @@ related_documents:
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | 要件定義書 Ver 2.0 およびリポジトリ実態に基づき初版作成 |
 | Rev.1.1 | 2026-11-22 | xzyozi | `google-colab-cli` コマンド表記（`colab new`・`colab drivemount`・`colab sessions`）を実態に整合 |
+| Rev.1.2 | 2026-11-23 | xzyozi | `google-colab-cli` を `uv tool install` 等で導入する外部CLIである旨を明記 |

@@ -15,9 +15,14 @@ Google Colab 上で ComfyUI を実行するための CLI ランナープロジ�
 ## 開発・テスト実行
 
 ```powershell
+# Python依存の同期・テスト実行
 uv sync --group dev
 uv run --no-sync pytest --cov=colab_cli_comfyui_runner --cov-report=term-missing
 uv run --no-sync python scripts/run_batch.py --help
+
+# 外部CLIツール (google-colab-cli) の導入・初回OAuth認証（対話型ターミナルで実行）
+uv tool install google-colab-cli
+colab usage
 ```
 
 ## ドキュメント検証
