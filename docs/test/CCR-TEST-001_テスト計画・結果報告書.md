@@ -5,9 +5,9 @@ document_number: "CCR-TEST-001"
 document_role: "evidence"
 ssot_scope: "test_evidence"
 status: "draft"
-version: "1.0"
+version: "1.1"
 created_at: "2026-11-22"
-updated_at: "2026-11-22"
+updated_at: "2026-11-23"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "colab-cli-comfyui-runner のCU消費分離テスト階層（L1/L2/L3）、機能テスト要件（TR-001〜TR-008）・データ境界・非機能受入テストの具象ケース、合格基準および証跡記録形式を定義するため"
@@ -95,26 +95,26 @@ related_documents:
 
 | ケースID | 対象・条件 | 入力・操作 | 期待結果 | 期待結果の根拠 | 実績結果 | 判定 | 証跡 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :---: | :--- |
-| `TC-L1-001` | `F-001` CU不足・残存セッション | `cu_before < min_required_cu`、または `colab sessions` に残存ありのモック応答で `F-001` 実行 | `ERR-PREFLIGHT-CU` で即 `Aborted`、VM起動未実行、取得ロック解放 | `TR-001` (`CCR-DD-001` 4.1) | 未実施 | 未実施 | — |
-| `TC-L1-002` | `F-002` 起動順序・`session_name` 事前記録 | 正常モックおよび `colab drivemount` 失敗モックで `F-002` 実行 | `colab new` 呼び出し直前にロックへ `session_name` が原子書込され、`new` → `drivemount` → 動的 `ProxyCommand` SSH の順で実行。途中失敗時も `F-006` へ `session_name` が渡る | `TR-002` (`CCR-DD-001` 2.2/3.2) | 未実施 | 未実施 | — |
-| `TC-L1-003` | `F-003` 配送対象分離・Drive不在 | `setup.sh` と `workflows/<model>/` 依存定義（`requirements.txt`, `nodes.txt`）を配送。Driveモデル不在エラー応答でテスト | 動的 `ProxyCommand` で `/tmp/ccr_setup/` へ配送され、Driveモデル欠落時は `ERR-SETUP-DRIVE-MISSING` で即停止へ遷移 | `TR-003` (`CCR-DD-001` 2.2) | 未実施 | 未実施 | — |
-| `TC-L1-004` | `F-004` テンプレート非破壊・2ジョブ連続 | 1バッチ2ジョブ（ジョブ1のみ任意解像度/尺指定、ジョブ2は既定値）を投入 | テンプレート辞書が汚染されず、ジョブ2へジョブ1の値（および `output_prefix`）が漏れない | `TR-004` (`CCR-DD-001` 2.2/2.3) | 未実施 | 未実施 | — |
-| `TC-L1-005` | `F-004` WS切断時 `/history` フォールバック | `POST /prompt` 成功後、`/ws` を強制切断し `/history/{prompt_id}` が完了応答を返すモック | **重複 `POST /prompt` を発行せず** `/history/{prompt_id}` から完了・出力パスを取得する | `TR-004` (`CCR-DD-001` 2.2/4.1) | 未実施 | 未実施 | — |
-| `TC-L1-006` | `F-004` `input_assets` 解決・送信 | `source: "local"` 素材と `source: "drive"` 素材を含むジョブを投入 | `local` は `/upload/image` で送信した返却名、`drive` は `drive_assets/<relpath>` が `node_mappings` 経由で注入される | `TR-004` (`CCR-DD-001` 2.2) | 未実施 | 未実施 | — |
-| `TC-L1-007` | `F-004` 単一ジョブタイムアウト | `/ws` 応答が `timeout_sec` を超過するモック | `POST /interrupt` を試行した上で `ERR-JOB-EXECUTION` として記録する | `TR-005` (`CCR-DD-001` 2.2) | 未実施 | 未実施 | — |
-| `TC-L1-008` | `F-005` 時間予算・連続失敗遮断 | 3ジョブ中、1本目完了後に `max_batch_duration_sec` 超過、および連続2件失敗の2パターンを実行 | 残りジョブが `skipped` と記録され、`Stopping` へ遷移する | `TR-006` (`CCR-DD-001` 3.2) | 未実施 | 未実施 | — |
-| `TC-L1-009` | `F-005`/`F-006` 課金暴走防止（全異常・割込） | `F-002`失敗・`F-003`失敗・`F-004`失敗・実行中 `SIGINT`/`SIGTERM` 送出の4パターンを実行 | 全パターンで `finally` 経由の `colab stop` と `colab sessions` 空確認・ロック解放が必ず実行される | `TR-007` / `NFR-006` (`CCR-DD-001`, `CCR-BD-001`) | 未実施 | 未実施 | — |
-| `TC-L1-010` | `F-006` `colab stop` リトライと最終失敗 | `colab stop` が「1〜2回目失敗・3回目成功」と「3回連続失敗」の2パターンを実行 | 前者は `vm_stopped_verified == true` で終了。後者は最大3回リトライ後に `ERR-STOP-FAILURE` および手動停止警告を出力 | `TR-008` (`CCR-DD-001` 4.1) | 未実施 | 未実施 | — |
+| `TC-L1-001` | `F-001` CU不足・残存セッション | `cu_before < min_required_cu`、または `colab sessions` に残存ありのモック応答で `F-001` 実行 | `ERR-PREFLIGHT-CU` で即 `Aborted`、VM起動未実行、取得ロック解放 | `TR-001` (`CCR-DD-001` 4.1) | 期待どおり例外・ロック解放確認 | Pass | `RUN-001` (`tests/test_pipeline.py`) |
+| `TC-L1-002` | `F-002` 起動順序・`session_name` 事前記録 | 正常モックおよび `colab drivemount` 失敗モックで `F-002` 実行 | `colab new` 呼び出し直前にロックへ `session_name` が原子書込され、`new` → `drivemount` → 動的 `ProxyCommand` SSH の順で実行。途中失敗時も `F-006` へ `session_name` が渡る | `TR-002` (`CCR-DD-001` 2.2/3.2) | 呼び出し順序・事前記録・`ProxyCommand` 確認 | Pass | `RUN-001` (`tests/test_pipeline.py`, `tests/test_colab_cli.py`) |
+| `TC-L1-003` | `F-003` 配送対象分離・Drive不在 | `setup.sh` と `workflows/<model>/` 依存定義（`requirements.txt`, `nodes.txt`）を配送。Driveモデル不在エラー応答でテスト | 動的 `ProxyCommand` で `/tmp/ccr_setup/` へ配送され、Driveモデル欠落時は `ERR-SETUP-DRIVE-MISSING` で即停止へ遷移 | `TR-003` (`CCR-DD-001` 2.2) | 配送対象・終了コード2判別・即停止確認 | Pass | `RUN-001` (`tests/test_pipeline.py`, `tests/test_colab_cli.py`) |
+| `TC-L1-004` | `F-004` テンプレート非破壊・2ジョブ連続 | 1バッチ2ジョブ（ジョブ1のみ任意解像度/尺指定、ジョブ2は既定値）を投入 | テンプレート辞書が汚染されず、ジョブ2へジョブ1の値（および `output_prefix`）が漏れない | `TR-004` (`CCR-DD-001` 2.2/2.3) | ジョブ2の既定値維持・非汚染確認 | Pass | `RUN-001` (`tests/test_pipeline.py`) |
+| `TC-L1-005` | `F-004` WS切断時 `/history` フォールバック | `POST /prompt` 成功後、`/ws` を強制切断し `/history/{prompt_id}` が完了応答を返すモック | **重複 `POST /prompt` を発行せず** `/history/{prompt_id}` から完了・出力パスを取得する | `TR-004` (`CCR-DD-001` 2.2/4.1) | フォールバックによる出力パス取得確認 | Pass | `RUN-001` (`tests/test_comfy_client.py`) |
+| `TC-L1-006` | `F-004` `input_assets` 解決・送信 | `source: "local"` 素材と `source: "drive"` 素材を含むジョブを投入 | `local` は `/upload/image` で送信した返却名、`drive` は `drive_assets/<relpath>` が `node_mappings` 経由で注入される | `TR-004` (`CCR-DD-001` 2.2) | 両ソースの送信・注入値確認 | Pass | `RUN-001` (`tests/test_pipeline.py`) |
+| `TC-L1-007` | `F-004` 単一ジョブタイムアウト | `/ws` 応答が `timeout_sec` を超過するモック | `POST /interrupt` を試行した上で `ERR-JOB-EXECUTION` として記録する | `TR-005` (`CCR-DD-001` 2.2) | `/interrupt` 発行と `JobExecutionError` 送出確認 | Pass | `RUN-001` (`tests/test_comfy_client.py`) |
+| `TC-L1-008` | `F-005` 時間予算・連続失敗遮断 | 3ジョブ中、1本目完了後に `max_batch_duration_sec` 超過、および連続2件失敗の2パターンを実行 | 残りジョブが `skipped` と記録され、`Stopping` へ遷移する | `TR-006` (`CCR-DD-001` 3.2) | 両パターンで残ジョブ `skipped`・安全停止確認 | Pass | `RUN-001` (`tests/test_pipeline.py`) |
+| `TC-L1-009` | `F-005`/`F-006` 課金暴走防止（全異常・割込） | `F-002`失敗・`F-003`失敗・`F-004`失敗・実行中 `SIGINT`/`SIGTERM` 送出の4パターンを実行 | 全パターンで `finally` 経由の `colab stop` と `colab sessions` 空確認・ロック解放が必ず実行される | `TR-007` / `NFR-006` (`CCR-DD-001`, `CCR-BD-001`) | 全パターンで停止・トンネル終了・ロック解放確認 | Pass | `RUN-001` (`tests/test_pipeline.py`) |
+| `TC-L1-010` | `F-006` `colab stop` リトライと最終失敗 | `colab stop` が「1〜2回目失敗・3回目成功」と「3回連続失敗」の2パターンを実行 | 前者は `vm_stopped_verified == true` で終了。後者は最大3回リトライ後に `ERR-STOP-FAILURE` および手動停止警告を出力 | `TR-008` (`CCR-DD-001` 4.1) | 3回リトライ成功・最終失敗時の例外/ロック残置確認 | Pass | `RUN-001` (`tests/test_pipeline.py`) |
 
 ### 4.2 L1：データ永続化・排他ロック・境界値（0 CU）
 
 | ケースID | 対象・条件 | 入力・操作 | 期待結果 | 期待結果の根拠 | 実績結果 | 判定 | 証跡 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :---: | :--- |
-| `TC-L1-101` | 原子書き込み破壊テスト | 既存ログがある状態で `os.replace` 直前に例外を注入し、別テストで孤立 `.tmp.<pid>` を配置 | 既存ログが破損せず無傷で残り、自プロセス `.tmp.<pid>` が清掃され、孤立 `.tmp.*` は無視される | `CCR-DS-001` 3.1 | 未実施 | 未実施 | — |
-| `TC-L1-102` | 排他ロック `O_CREAT \| O_EXCL` | 同時2スレッド/プロセスからロック取得を試行 | 1つのみ成功し、他方は `ERR-PREFLIGHT-LOCK` で即時拒否される | `CCR-DS-001` 3.2 | 未実施 | 未実施 | — |
-| `TC-L1-103` | `stale lock` 4象限マトリクス | ①PID生存 ②PID不在＋`session_name: null` ③PID不在＋`sessions`空 ④PID不在＋`sessions`残存 | ①は競合拒否、②③は自動回収、④は自動回収せず残存VM停止を促して中断 | `CCR-DS-001` 3.2 | 未実施 | 未実施 | — |
-| `TC-L1-104` | 入力バリデーション境界値 | 尺（3/4/15/16秒）、解像度（奇数/0/負数）、`..` 含む相対パス、未知 `schema_version` | 4〜15秒・正の偶数のみ許可。3/16秒・奇数・0・負数・`..`・未知バージョンはすべて起動前にエラー終了 | `CCR-DS-001` 2.2/4.1 | 未実施 | 未実施 | — |
-| `TC-L1-105` | ログ一意化と `cu_usage_history.jsonl` | 同一 `batch_id` を2回実行 | `logs/batch_<batch_id>_<execution_id>.json` が2ファイル独立生成され上書きされず、`cu_usage_history.jsonl` に2行追記される | `CCR-DS-001` 1.3/2.2 E | 未実施 | 未実施 | — |
+| `TC-L1-101` | 原子書き込み破壊テスト | 既存ログがある状態で `os.replace` 直前に例外を注入し、別テストで孤立 `.tmp.<pid>` を配置 | 既存ログが破損せず無傷で残り、自プロセス `.tmp.<pid>` が清掃され、孤立 `.tmp.*` は無視される | `CCR-DS-001` 3.1 | 既存ファイル保全・`.tmp` 清掃確認 | Pass | `RUN-001` (`tests/test_dao_and_models.py`) |
+| `TC-L1-102` | 排他ロック `O_CREAT \| O_EXCL` | 同時2スレッド/プロセスからロック取得を試行 | 1つのみ成功し、他方は `ERR-PREFLIGHT-LOCK` で即時拒否される | `CCR-DS-001` 3.2 | 二重取得の即時拒否確認 | Pass | `RUN-001` (`tests/test_dao_and_models.py`) |
+| `TC-L1-103` | `stale lock` 4象限マトリクス | ①PID生存 ②PID不在＋`session_name: null` ③PID不在＋`sessions`空 ④PID不在＋`sessions`残存 | ①は競合拒否、②③は自動回収、④は自動回収せず残存VM停止を促して中断 | `CCR-DS-001` 3.2 | 4象限すべて期待通り判定 | Pass | `RUN-001` (`tests/test_dao_and_models.py`) |
+| `TC-L1-104` | 入力バリデーション境界値 | 尺（3/4/15/16秒）、解像度（奇数/0/負数）、`..` 含む相対パス、未知 `schema_version` | 4〜15秒・正の偶数のみ許可。3/16秒・奇数・0・負数・`..`・未知バージョンはすべて起動前にエラー終了 | `CCR-DS-001` 2.2/4.1 | 全境界値・未知バージョン拒否確認 | Pass | `RUN-001` (`tests/test_dao_and_models.py`) |
+| `TC-L1-105` | ログ一意化と `cu_usage_history.jsonl` | 同一 `batch_id` を2回実行 | `logs/batch_<batch_id>_<execution_id>.json` が2ファイル独立生成され上書きされず、`cu_usage_history.jsonl` に2行追記される | `CCR-DS-001` 1.3/2.2 E | 独立追記および JSONL 2行生成確認 | Pass | `RUN-001` (`tests/test_dao_and_models.py`) |
 
 ### 4.3 L2：ローカル結合・ドライラン（0 CU）
 
@@ -139,16 +139,16 @@ related_documents:
 
 | 実行ID | 実施日 | Gitコミットハッシュ | テスト層 | 実施者・環境 | 結果概要 | 実測時間 | 消費CU | 特記事項・証跡リンク |
 | :--- | :--- | :--- | :---: | :--- | :--- | :---: | :---: | :--- |
-| `RUN-000` | 未実施 | 未実施 | L1 / L2 / L3 | xzyozi | 計画策定済み（実装完了後に順次実施） | — | 0.0 | 実装PRおよび実機ログ記録時に追記 |
+| `RUN-001` | 2026-11-23 | `3f12316` | L1 | xzyozi（Windows / Python 3.12） | 36件全パス、全体カバレッジ 88%（1243文/143未到達）、品質ゲート `QG-001`〜`QG-004` パス | 1.86秒 | 0.0 | `feat/core-infra` 上でモック単体・結合テスト実施 |
 
-- **総合判定**: 判定保留（実装前フェーズのため未実施）
-- **判定理由**: 本計画は L1/L2/L3 のテストケースと合否基準を確定した初版であり、コード実装および実機検証完了後に実績と証跡を記入して確定する。
+- **総合判定**: 条件付き合格（L1 完了・L2/L3 はワークフロー配置後に実施予定）
+- **判定理由**: L1（0 CU）の安全回路・永続化・CLI/SSH/APIモック検証および品質ゲート（`QG-001`〜`QG-004`）はすべて合格した。モデル固有ワークフロー（`workflows/minimax_h3/`）選定後に L2（`--dry-run`）および L3（実機受入）を実施し最終確定する。
 
 ## 6. 未実施・対象外・テスト差異
 
 | ID | 対象項目 | 状態 | 理由・標準との差異 | 影響・リスク | 代替確認・対応 | 承認者・期限 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `EX-TEST-001` | L1 / L2 / L3 全ケース | 未実施 | ドキュメント整備フェーズであり実装コード未作成のため | 実装完了まで動作証跡なし | 実装フェーズで L1 → L2 → L3 の順に実施し、5章へ記録する | xzyozi（実装完了時） |
+| `EX-TEST-001` | L2 / L3（`TC-L2-001`〜`002`, `TC-L3-001`〜`003`） | 未実施 | 共通インフラ基盤先行実装フェーズであり、実モデルワークフロー未配置・実機未検証のため | 実機環境固有の差異（実出力形式・推論速度・CU単価）は未確認 | ワークフロー取り込み後に L2 → L3 の順に実施し、5章へ追記する | xzyozi（フェーズ1実施時） |
 
 ## 7. 関連文書
 
@@ -173,3 +173,4 @@ related_documents:
 | 版数 | 改訂日 | 変更者 | 変更内容・変更理由 (Why) |
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | CUコスト分離戦略（L1/L2/L3）および TR-001〜TR-008 / NFR-001〜NFR-007 に対応する初版作成 |
+| Rev.1.1 | 2026-11-23 | xzyozi | 共通基盤実装に伴い L1 テスト実施結果（`RUN-001`: 36件パス・カバレッジ 88%）を反映 |

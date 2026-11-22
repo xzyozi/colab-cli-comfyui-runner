@@ -5,9 +5,9 @@ document_number: "CCR-DS-001"
 document_role: "normative"
 ssot_scope: "persistent_data"
 status: "draft"
-version: "1.1"
+version: "1.2"
 created_at: "2026-11-22"
-updated_at: "2026-11-22"
+updated_at: "2026-11-23"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "colab-cli-comfyui-runner におけるリポジトリ配置・Google Drive永続配置・VM一時配送配置・バッチ定義/実行ログスキーマ・原子書き込み契約および排他制御仕様を定義するため"
@@ -163,11 +163,12 @@ erDiagram
 | `$.model_name` | 文字列 | 必須 | 不可 | なし | 英小文字・数字・アンダースコア（ディレクトリ名と一致、例: `"minimax_h3"`） | 不変識別子 |
 | `$.workflow_template_path` | 文字列 | 必須 | 不可 | `"workflow_api.json"` | モデルディレクトリからの相対パス（親参照 `..` 禁止） | 任意パス変更不可 |
 | `$.required_drive_assets` | 配列 | 必須 | 不可 | なし | Drive相対パス（`models/...`）の非空配列。`C-002` が存在チェックとリンク作成に使用 | 新規アセット追加時は末尾追加 |
-| `$.node_mappings` | オブジェクト | 必須 | 不可 | なし | `prompt`、`width`、`height`、`duration_sec`、`seed`、`output_prefix`（出力ノードの `filename_prefix`、注入値 `<model_name>/<batch_id>/<job_id>`）、および `input_assets` 各論理キーからテンプレートJSON内ノードID・フィールド名への対応表 | モデル差し替え時も共通基盤を変更せず吸収 |
+| `$.node_mappings` | オブジェクト | 必須 | 不可 | なし | 各論理キー（`prompt`、`width`、`height`、`duration_sec`、`seed`、`output_prefix`、および `input_assets` 各キー）を `{ "node_id": 文字列, "input_key": 文字列 }` へ対応付けるマップ。`output_prefix` には `<model_name>/<batch_id>/<job_id>` を注入 | モデル差し替え時も共通基盤を変更せず吸収 |
 | `$.default_params` | オブジェクト | 必須 | 不可 | なし | 解像度・尺・ステップ数等の既定値マップ（`CCR-DD-001` のDTO検証で上限・下限を適用） | 未指定項目の補完用 |
 | `$.requirements_path` | 文字列 | 任意 | 可 | `null` | モデルディレクトリ相対パス（例: `"requirements.txt"`）。存在時のみVMへ配送・適用 | 未指定時は追加pip導入なし |
 | `$.nodes_path` | 文字列 | 任意 | 可 | `null` | モデルディレクトリ相対パス（例: `"nodes.txt"`）。カスタムノードGit URL一覧ファイル | 未指定時はカスタムノード追加なし |
 | `$.default_job_timeout_sec` | 数値 | 必須 | 不可 | `900` | 正の整数（秒）。1本あたり推論のタイムアウト上限 | モデル特性に応じて設定 |
+| `$.min_duration_sec` / `$.max_duration_sec` | 数値 | 任意 | 不可 | `4` / `15` | 正の整数（秒、`min_duration_sec <= max_duration_sec`）。当該モデルで許容する動画尺の下限・上限 | モデル追加時の範囲調整用 |
 
 #### B. バッチ入力定義（`batches/<batch_id>.json`）
 
@@ -298,3 +299,4 @@ Google AI Pro 単一契約（月間200 CU・単一A100スポット利用前提�
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | 基本設計書（CCR-BD-001）およびVM配送方針に基づき初版作成 |
 | Rev.1.1 | 2026-11-22 | xzyozi | 検収指摘反映（ログファイル名の一意化、ER図属性名統一、`cu_usage_history.jsonl` 定義、`output_prefix`・`input_assets`・`session_name` 記録・stale lock 判定強化） |
+| Rev.1.2 | 2026-11-23 | xzyozi | 実装整合（`node_mappings` 要素構造 `{node_id, input_key}` および `min_duration_sec`/`max_duration_sec` 任意項目を明記） |
