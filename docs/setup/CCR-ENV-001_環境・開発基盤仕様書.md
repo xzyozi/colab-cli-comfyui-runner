@@ -92,9 +92,9 @@ related_documents:
 | 拡散モデル本体（T2V/FL2V用） | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 約21.0 GB | `models/diffusion_models/` |
 | 拡散モデル本体（複数参照用） | `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 約21.0 GB | `models/diffusion_models/` |
 | エンコーダ | `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` | 約15.7 GB | `models/text_encoders/` |
-| Video VAE | `minimax_h3_video_vae_fp16.safetensors` | 約5.2 GB | `models/vae/` |
-| Audio VAE | `minimax_h3_audio_vae_fp32.safetensors` | 約0.6 GB | `models/vae/` |
-| 高速化LoRA | `minimax_h3_fl2v_turbo_8step_*.safetensors` | 数百MB | `models/loras/` |
+| Video VAE | `minimax_h3_video_vae_int8_convrot.safetensors`（または `fp16` 版） | 約2.81 GB（`fp16`: 約5.21 GB） | `models/vae/` |
+| Audio VAE | `minimax_h3_audio_vae_fp32.safetensors` | 約0.61 GB | `models/vae/` |
+| 高速化LoRA | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` | 約1.96 GB | `models/loras/` |
 
 ### 4.3 ビルド・パッケージング・配布
 
@@ -169,3 +169,4 @@ related_documents:
 | Rev.1.0 | 2026-11-22 | xzyozi | 要件定義書 Ver 2.0 およびリポジトリ実態に基づき初版作成 |
 | Rev.1.1 | 2026-11-22 | xzyozi | `google-colab-cli` コマンド表記（`colab new`・`colab drivemount`・`colab sessions`）を実態に整合 |
 | Rev.1.2 | 2026-11-23 | xzyozi | `google-colab-cli` を `uv tool install` 等で導入する外部CLIである旨を明記 |
+| Rev.1.3 | 2026-11-23 | xzyozi | 公式 `Comfy-Org/MiniMax-H3` の実測モデルファイル名・容量表記へ整合 |

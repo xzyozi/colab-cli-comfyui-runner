@@ -89,7 +89,7 @@ fi
 
 # モデル・入出力ディレクトリのシンボリックリンク構築
 mkdir -p "${COMFY_DIR}/models" "${COMFY_DIR}/input"
-for subdir in diffusion_models text_encoders vae loras; do
+for subdir in diffusion_models text_encoders vae loras embeddings; do
   if [[ -d "${DRIVE_BASE}/models/${subdir}" ]]; then
     rm -rf "${COMFY_DIR}/models/${subdir}"
     ln -sfn "${DRIVE_BASE}/models/${subdir}" "${COMFY_DIR}/models/${subdir}"
