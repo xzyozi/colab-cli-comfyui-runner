@@ -4,7 +4,7 @@ document_type: "basic_design"
 document_number: "CCR-BD-001"
 document_role: "normative"
 ssot_scope: "system_architecture"
-status: "draft"
+status: "approved"
 version: "1.1"
 created_at: "2026-11-22"
 updated_at: "2026-11-22"
@@ -14,6 +14,8 @@ purpose: "Google Colab CLI × ComfyUI（MiniMax H3）動画自動生成パイプ
 related_documents:
   - "ドキュメントガバナンス（相対パス: ../README.md）"
   - "用語集（相対パス: ../../CONTEXT.md）"
+  - "CCR-DD-001 詳細設計書（相対パス: ./CCR-DD-001_詳細設計書.md）"
+  - "CCR-DS-001 データ構造仕様書（相対パス: ./CCR-DS-001_データ構造仕様書.md）"
   - "CCR-ENV-001 環境・開発基盤仕様書（相対パス: ../setup/CCR-ENV-001_環境・開発基盤仕様書.md）"
 ---
 
@@ -126,12 +128,12 @@ flowchart TD
 
 | コンポーネントID | コンポーネント名 | 担当領域・主要責務 | 依存先・依存方向 / 公開インターフェース | 関連詳細設計書 |
 | :--- | :--- | :--- | :--- | :--- |
-| `C-001` | VM・CUライフサイクル制御 | `google-colab-cli` を用いたCU残高確認（`colab usage`）、アクティブセッション確認（`colab sessions`）、A100 High-RAM VMの新規作成（`colab new`）、Driveマウント実行（`colab drivemount`）、SSHポート転送確立、確実な停止（`colab stop` / `--rm`） | `google-colab-cli` / OpenSSH に依存。`C-005` へライフサイクル操作I/Fを提供 | CCR-DD-001（作成予定） |
-| `C-002` | Colab環境復元・Driveリンク管理 | Colab VM上での `comfy-cli`（`uv`連携）によるComfyUI構築、高速化ライブラリおよびモデル別依存定義の汎用適用、マウント済みDriveパス（`/content/drive/MyDrive/...`）の存在チェックとモデル/`output/` シンボリックリンク作成 | マウント済みGoogle Drive領域・`comfy-cli` に依存。`C-001` による `colab drivemount` 完了後にSSH経由で起動される | CCR-DD-001（作成予定） |
-| `C-003` | 推論エンジン・モデル実行基盤 | ComfyUIサーバ待ち受け、MiniMax H3（FL2VA/Ref2VA量子化＋Qwen3VL＋Video/Audio VAE＋Turbo LoRA）および SageAttention / TeaCache によるMP4生成 | `C-002` が構築したリンク先（モデル・出力）を参照。`localhost:8188` でHTTP/WS APIおよびWeb UIを公開 | CCR-DD-001（作成予定） |
-| `C-004` | ワークフロー・API制御アダプタ | SSHポート転送越しに ComfyUI API（標準HTTP/WS API または `ComfyScript`）へテンプレートJSON＋パラメータを投入し、進捗・完了・エラーを監視 | `C-003`（`localhost:8188`）へ接続。`C-005` からジョブ投入単位で呼び出される | CCR-DD-001（作成予定） |
-| `C-005` | バッチオーケストレータ | 起動前CU・セッションチェック、VM起動、Driveマウント指示、環境復元呼び出し、5〜10本単位の連続投入ループ、処理時間監視、正常/異常終了時の `colab stop` 保証を統括 | `C-001`, `C-004`, `C-006` を統合制御。ローカル操作者のCLIエントリポイント | CCR-DD-001（作成予定） |
-| `C-006` | ワークフロー定義・成果物管理 | `workflows/<model_name>/` 配下のAPI用JSON・モデル固有パラメータ・モデル固有のカスタムノード/追加Pythonパッケージ依存定義管理、および Drive `output/` 直結と必要時の `colab download` / `scp` / `rsync` 取得導線 | モデル実体はDrive永続領域を参照。`C-005` へモデル定義を提供し、モデル差し替え境界を担う | CCR-DS-001（作成予定） |
+| `C-001` | VM・CUライフサイクル制御 | `google-colab-cli` を用いたCU残高確認（`colab usage`）、アクティブセッション確認（`colab sessions`）、A100 High-RAM VMの新規作成（`colab new`）、Driveマウント実行（`colab drivemount`）、SSHポート転送確立、確実な停止（`colab stop` / `--rm`） | `google-colab-cli` / OpenSSH に依存。`C-005` へライフサイクル操作I/Fを提供 | [CCR-DD-001](./CCR-DD-001_詳細設計書.md) |
+| `C-002` | Colab環境復元・Driveリンク管理 | Colab VM上での `comfy-cli`（`uv`連携）によるComfyUI構築、高速化ライブラリおよびモデル別依存定義の汎用適用、マウント済みDriveパス（`/content/drive/MyDrive/...`）の存在チェックとモデル/`output/` シンボリックリンク作成 | マウント済みGoogle Drive領域・`comfy-cli` に依存。`C-001` による `colab drivemount` 完了後にSSH経由で起動される | [CCR-DD-001](./CCR-DD-001_詳細設計書.md) |
+| `C-003` | 推論エンジン・モデル実行基盤 | ComfyUIサーバ待ち受け、MiniMax H3（FL2VA/Ref2VA量子化＋Qwen3VL＋Video/Audio VAE＋Turbo LoRA）および SageAttention / TeaCache によるMP4生成 | `C-002` が構築したリンク先（モデル・出力）を参照。`localhost:8188` でHTTP/WS APIおよびWeb UIを公開 | [CCR-DD-001](./CCR-DD-001_詳細設計書.md) |
+| `C-004` | ワークフロー・API制御アダプタ | SSHポート転送越しに ComfyUI API（標準HTTP/WS API または `ComfyScript`）へテンプレートJSON＋パラメータを投入し、進捗・完了・エラーを監視 | `C-003`（`localhost:8188`）へ接続。`C-005` からジョブ投入単位で呼び出される | [CCR-DD-001](./CCR-DD-001_詳細設計書.md) |
+| `C-005` | バッチオーケストレータ | 起動前CU・セッションチェック、VM起動、Driveマウント指示、環境復元呼び出し、5〜10本単位の連続投入ループ、処理時間監視、正常/異常終了時の `colab stop` 保証を統括 | `C-001`, `C-004`, `C-006` を統合制御。ローカル操作者のCLIエントリポイント | [CCR-DD-001](./CCR-DD-001_詳細設計書.md) |
+| `C-006` | ワークフロー定義・成果物管理 | `workflows/<model_name>/` 配下のAPI用JSON・モデル固有パラメータ・モデル固有のカスタムノード/追加Pythonパッケージ依存定義管理、および Drive `output/` 直結と必要時の `colab download` / `scp` / `rsync` 取得導線 | モデル実体はDrive永続領域を参照。`C-005` へモデル定義を提供し、モデル差し替え境界を担う | [CCR-DS-001](./CCR-DS-001_データ構造仕様書.md) |
 
 ※ API制御方式（標準HTTP/WS API と `ComfyScript` のどちらを第一実装とするか）の比較・決定は、詳細設計フェーズまたはADRにて確定する。
 
@@ -205,3 +207,4 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | 要件定義書 Ver 2.0 に基づき初版作成 |
 | Rev.1.1 | 2026-11-22 | xzyozi | レビュー指摘反映（`colab new`・`colab drivemount`・`colab sessions` 整合、フェーズ1/2導線明確化、モデル固有依存境界の追加） |
+| Rev.1.2 | 2026-11-22 | xzyozi | v1.1検収完了に伴い `status` を `approved` へ移行し、`CCR-DD-001`・`CCR-DS-001` への参照リンクを追加 |
