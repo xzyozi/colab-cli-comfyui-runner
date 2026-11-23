@@ -134,6 +134,8 @@ def build_ssh_options(session_name: str, ssh_key_path: Path) -> list[str]:
         "-o",
         f"UserKnownHostsFile={null_hosts}",
         "-o",
+        "LogLevel=ERROR",
+        "-o",
         "BatchMode=yes",
     ]
 
@@ -387,7 +389,7 @@ def _resolve_openssh_binary(binary_name: str) -> str:
 class OpenSshTransport:
     """OpenSSH / SCP を用いて動的 `ProxyCommand` 経由でVMと通信する実装。"""
 
-    def __init__(self, ssh_bin: str = "ssh", scp_bin: str = "scp", remote_host: str = "colab") -> None:
+    def __init__(self, ssh_bin: str = "ssh", scp_bin: str = "scp", remote_host: str = "root@colab") -> None:
         """トランスポートを初期化する。
 
         Args:

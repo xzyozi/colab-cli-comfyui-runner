@@ -5,9 +5,9 @@ document_number: "CCR-OP-001"
 document_role: "procedure"
 ssot_scope: "operation"
 status: "draft"
-version: "1.0"
+version: "1.1"
 created_at: "2026-11-22"
-updated_at: "2026-11-22"
+updated_at: "2026-11-23"
 author: "xzyozi"
 owner: "xzyozi"
 purpose: "フェーズ1（GUIベンチマーク・テンプレート確定）、フェーズ2（定常バッチ運用・月次CU管理・モデル追加）、および障害復旧ランブックの操作手順を定義するため"
@@ -74,7 +74,7 @@ colab usage
 colab new -s h3-bench --gpu A100 --high-mem
 colab drivemount -s h3-bench
 # ポート転送例（別ターミナルまたはバックグラウンド）
-ssh -N -L 8188:127.0.0.1:8188 -o ProxyCommand="colab ssh --proxy-mode -s h3-bench -i $env:USERPROFILE\.ssh\id_ed25519" colab
+ssh -N -L 8188:127.0.0.1:8188 -o ProxyCommand="colab ssh --proxy-mode -s h3-bench -i $env:USERPROFILE\.ssh\id_ed25519" -i $env:USERPROFILE\.ssh\id_ed25519 root@colab
 # 終了時
 colab stop -s h3-bench
 colab sessions
@@ -184,3 +184,4 @@ uv run python scripts/run_batch.py --batch batches/h3_batch_001.json
 | 版数 | 改訂日 | 変更者 | 変更内容・変更理由 (Why) |
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | フェーズ1ベンチマーク・フェーズ2定常運用・障害復旧ランブックとして初版作成 |
+| Rev.1.1 | 2026-11-23 | xzyozi | 手動SSHポート転送例の接続先へ `root@colab` および秘密鍵 `-i` を明記 |

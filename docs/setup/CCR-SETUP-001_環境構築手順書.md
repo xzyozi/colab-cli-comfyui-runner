@@ -127,7 +127,7 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 | ID | 対象手順 | 症状・差異 | 原因・制約 | 対応 | 再発防止・解除条件 |
 | :---: | :--- | :--- | :--- | :--- | :--- |
 | `EX-SETUP-001` | 3.1 手順3 | `"Malformed auth code"` で認証失敗 | 非対話シェル実行、コード期限切れ、または空白・改行混入 | 対話型ターミナルから `colab usage` を再実行し新しいコードを取得（壊れたトークン残留時は OS キーリングの `google-colab-cli` または `~/.config/colab-cli/token.json` を削除して再認証） | 初回認証成功・OSキーリング保存で解消 |
-| `EX-SETUP-002` | 3.1 手順5 | Windows で `Permission denied (publickey)` | `~/.ssh/config` の `Host *` より下に Colab 設定がある、または相対パス指定 | Colab ブロックを `Host *` より上位に移動し絶対パスを指定（フェーズ2は動的引数を使用） | 手動設定見直し完了で解消 |
+| `EX-SETUP-002` | 3.1 手順5 | Windows で `Permission denied (publickey)` | `~/.ssh/config` の `Host *` より下に Colab 設定がある、相対パス指定、または SSH 接続ユーザー名に `root`（`root@colab` / `User root`）が未指定でローカルOSユーザー名になってしまう | Colab ブロックを `Host *` より上位に移動し `User root` と絶対パスを指定（フェーズ2および手動接続でも `root@colab` と `-i` を指定） | `root` ユーザー指定と設定見直し完了で解消 |
 | `EX-SETUP-003` | 3.2 手順1 | `colab drivemount` がタイムアウト・ハングする | `google-colab-cli` が Drive 認可 URL 表示後に `Press Enter` を TTY/標準入力から待機するため、出力を捕捉する非対話シェル等では進めない | 出力を捕捉しない対話型 PowerShell 等で実行し、表示された Google Drive 認可 URL をブラウザで許可した後に Enter キーを押す | 対話端末での Drive 認可完了で解消 |
 
 ## 7. 関連文書

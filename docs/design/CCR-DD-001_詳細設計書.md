@@ -74,7 +74,7 @@ related_documents:
 
 - **対象機能・関数名**: `provision_vm_and_tunnel`（VM起動・Driveマウント・SSHトンネル確立）
 - **機能概要**: 一意な `session_name` を採番して `colab new` 実行直前に原子置換で `state/active_batch.lock` へ記録した上で、`colab new -s <session_name> --gpu A100 --high-mem` でスポットVMを起動し、続けて `colab drivemount` を実行して `localhost:8188` へのSSHポートフォワーディングバックグラウンドプロセスを確立する。
-- **動的SSH接続契約（案A）**: 静的 `~/.ssh/config` のホストエイリアスに依存せず、`ssh` / `scp` 実行時に `-o ProxyCommand="colab ssh --proxy-mode -s <session_name> -i <abs_key_path>" -o StrictHostKeyChecking=no -o UserKnownHostsFile=<os_null>` をCLI引数として動的に組み立てて渡す（Windows上のパス区切りやヌルデバイス差異はアダプタ層で吸収する）。
+- **動的SSH接続契約（案A）**: 静的 `~/.ssh/config` のホストエイリアスに依存せず、`ssh` / `scp` 実行時に `-i <abs_key_path> -o ProxyCommand="colab ssh --proxy-mode -s <session_name> -i <abs_key_path>" -o StrictHostKeyChecking=no -o UserKnownHostsFile=<os_null> -o LogLevel=ERROR -o BatchMode=yes` を組み立て、接続先を `root@colab`（Colab VM のSSH接続ユーザー `root` 明示）として実行する（Windows上のパス区切り・OpenSSH探索・ヌルデバイス差異はアダプタ層で吸収する）。
 - **事前条件 (Pre-conditions)**: `F-001` が成功し、排他ロックが保持され、`ssh_key_path` がローカルに存在すること。
 - **事後条件 (Post-conditions)**: ロックに `session_name` が永続記録され、Colab VM 稼働・Drive マウント完了およびローカル `127.0.0.1:<local_port>` へのSSH転送プロセスPIDを含む `VmSessionDto` が返却されること。`colab new` 着手後の途中失敗時はロック記録済みの `session_name` を基に `F-006` での確実な停止を可能にする。
 - **タイムアウト / キャンセル**: `colab new` は 300 秒、`colab drivemount` は 600 秒（初回または再承認時に Drive OAuth URL 表示と `Press Enter` 待ちが発生するため標準入出力を捕捉せず継承）、SSH疎通待機は 60 秒を上限とする。
