@@ -202,6 +202,7 @@ def test_cli_parsers_and_dynamic_ssh_options(tmp_path: Path) -> None:
     assert "colab ssh --proxy-mode -s ccr-20261122-001 -i" in joined
     assert "StrictHostKeyChecking=no" in joined
     assert "LogLevel=ERROR" in joined
+    assert "ServerAliveInterval=30" in joined
 
 
 def test_default_is_pid_alive_and_lock_edge_cases(tmp_path: Path) -> None:

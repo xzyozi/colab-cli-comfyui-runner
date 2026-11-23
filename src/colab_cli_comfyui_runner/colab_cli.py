@@ -136,6 +136,10 @@ def build_ssh_options(session_name: str, ssh_key_path: Path) -> list[str]:
         "-o",
         "LogLevel=ERROR",
         "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=10",
+        "-o",
         "BatchMode=yes",
     ]
 

@@ -67,8 +67,11 @@ if ! command -v comfy >/dev/null 2>&1; then
 fi
 
 if [[ ! -d "${COMFY_DIR}" ]]; then
-  comfy --skip-prompt --workspace="${COMFY_DIR}" install --nvidia --fast-deps || \
+  if ! comfy --skip-prompt --workspace="${COMFY_DIR}" install --nvidia --fast-deps; then
+    rm -rf "${COMFY_DIR}"
     git clone --depth 1 https://github.com/Comfy-Org/ComfyUI.git "${COMFY_DIR}"
+    uv pip install --system -q -r "${COMFY_DIR}/requirements.txt"
+  fi
 fi
 
 # モデル固有の追加 Python 依存適用（workflows/<model_name>/requirements.txt）
