@@ -134,6 +134,8 @@ def build_ssh_options(session_name: str, ssh_key_path: Path) -> list[str]:
         "-o",
         f"UserKnownHostsFile={null_hosts}",
         "-o",
+        "LogLevel=ERROR",
+        "-o",
         "BatchMode=yes",
     ]
 
@@ -164,7 +166,7 @@ class ColabCliRunner(Protocol):
     ) -> None:
         """新規Colabセッションを起動する。"""
 
-    def drivemount(self, session_name: str, *, timeout_sec: int = 180) -> None:
+    def drivemount(self, session_name: str, *, timeout_sec: int = 600) -> None:
         """Colab VMへGoogle Driveをマウントする。"""
 
     def stop_session(self, session_name: str, *, timeout_sec: int = 60) -> None:
@@ -221,12 +223,18 @@ class SubprocessColabCliRunner:
         """
         self._executable = executable
 
-    def _run(self, args: list[str], *, timeout_sec: int) -> subprocess.CompletedProcess[str]:
+    def _run(
+        self,
+        args: list[str],
+        *,
+        timeout_sec: int,
+        capture_output: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
         cmd = [self._executable, *args]
         try:
             return subprocess.run(
                 cmd,
-                capture_output=True,
+                capture_output=capture_output,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -301,21 +309,24 @@ class SubprocessColabCliRunner:
                 f"colab new が失敗しました (session={session_name}, code={proc.returncode}): {proc.stderr.strip()}"
             )
 
-    def drivemount(self, session_name: str, *, timeout_sec: int = 180) -> None:
+    def drivemount(self, session_name: str, *, timeout_sec: int = 600) -> None:
         """`colab drivemount` で Google Drive をマウントする。
+
+        初回または Drive 権限再承認が必要な場合、`colab drivemount` が対話端末に
+        認可 URL と Enter 待ちプロンプトを出すため標準入出力を捕捉せず継承する。
 
         Args:
             session_name: 対象セッション名。
-            timeout_sec: タイムアウト（秒）。
+            timeout_sec: タイムアウト（秒、既定: `colab_cli` 準拠の 600 秒）。
 
         Raises:
             VmProvisionError: マウントに失敗した場合。
         """
-        proc = self._run(["drivemount", "-s", session_name], timeout_sec=timeout_sec)
+        proc = self._run(["drivemount", "-s", session_name], timeout_sec=timeout_sec, capture_output=False)
         if proc.returncode != 0:
+            stderr_msg = (proc.stderr or "").strip()
             raise VmProvisionError(
-                f"colab drivemount が失敗しました (session={session_name}, code={proc.returncode}): "
-                f"{proc.stderr.strip()}"
+                f"colab drivemount が失敗しました (session={session_name}, code={proc.returncode}): {stderr_msg}"
             )
 
     def stop_session(self, session_name: str, *, timeout_sec: int = 60) -> None:
@@ -378,7 +389,7 @@ def _resolve_openssh_binary(binary_name: str) -> str:
 class OpenSshTransport:
     """OpenSSH / SCP を用いて動的 `ProxyCommand` 経由でVMと通信する実装。"""
 
-    def __init__(self, ssh_bin: str = "ssh", scp_bin: str = "scp", remote_host: str = "colab") -> None:
+    def __init__(self, ssh_bin: str = "ssh", scp_bin: str = "scp", remote_host: str = "root@colab") -> None:
         """トランスポートを初期化する。
 
         Args:

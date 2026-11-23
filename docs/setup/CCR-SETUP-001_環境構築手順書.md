@@ -5,7 +5,7 @@ document_number: "CCR-SETUP-001"
 document_role: "procedure"
 ssot_scope: "environment_setup"
 status: "draft"
-version: "1.1"
+version: "1.3"
 created_at: "2026-11-22"
 updated_at: "2026-11-23"
 author: "xzyozi"
@@ -99,7 +99,7 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 
 | No. | 操作・設定 | 期待結果 | 異常時の対応 |
 | :---: | :--- | :--- | :--- |
-| 1 | 経路A（CPUランタイム）または経路Bで `Comfy-Org/MiniMax-H3_ComfyUI_repackaged` から必要モデル群を取得し、上記サブディレクトリへ配置する。 | 全 6 種（使用する用途に応じて FL2VA / Ref2VA 選択可）が所定ディレクトリに保存される。 | 転送中断時は再実行（レジューム対応コマンド）し、0バイトや `.incomplete` ファイルを残さない。 |
+| 1 | 経路A（CPUランタイム）で**ご自身の対話型ターミナル**から `colab new -s ccr-stage` → `colab drivemount -s ccr-stage` を実行し（Drive 未認可時は端末に認可 URL と `Press Enter` 待ちが表示されるため、ブラウザで許可後に Enter を押す）、その後 `scripts/stage_minimax_h3.sh` を転送・実行（または経路Bでローカル経由）して `Comfy-Org/MiniMax-H3` から必要モデル群を上記サブディレクトリへ配置する。 | 必須5ファイル（Ref2VA併用時は6ファイル）が所定ディレクトリに保存される。 | 転送中断時は再実行（`curl -C -` によるレジューム対応）し、0バイトや `.part` ファイルを残さない。非対話環境で `drivemount` が待機状態になった場合は `colab stop -s ccr-stage` 後に対話型ターミナルでやり直す。 |
 | 2 | 経路Aで CPU ランタイムを起動した場合は、配置完了直後に必ず `colab stop` および `colab sessions` で停止を確認する。 | アクティブセッションが空になる。 | 残存時は即座に `colab stop` を再実行する。 |
 | 3 | 配置した全ファイルについて、次章「4. 構築後の確認」のパス・サイズ検収リストと照合する。 | 全ファイルのパスと容量目安が一致する。 | 不一致ファイルは再取得して差し替える。 |
 
@@ -113,9 +113,9 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 | 拡散モデル本体（T2V/FL2V） | `<drive_root>/models/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 存在し、容量が約 21.0 GB であること | `ls -lh` 出力 |
 | 拡散モデル本体（Ref2VA・利用時） | `<drive_root>/models/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 利用する場合に存在し、約 21.0 GB であること | `ls -lh` 出力 |
 | エンコーダ | `<drive_root>/models/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` | 存在し、容量が約 15.7 GB であること | `ls -lh` 出力 |
-| Video VAE | `<drive_root>/models/vae/minimax_h3_video_vae_fp16.safetensors` | 存在し、容量が約 5.2 GB であること | `ls -lh` 出力 |
-| Audio VAE | `<drive_root>/models/vae/minimax_h3_audio_vae_fp32.safetensors` | 存在し、容量が約 0.6 GB であること | `ls -lh` 出力 |
-| 高速化LoRA | `<drive_root>/models/loras/minimax_h3_fl2v_turbo_8step_*.safetensors` | 存在し、数百 MB の正常ファイルであること | `ls -lh` 出力 |
+| Video VAE | `<drive_root>/models/vae/minimax_h3_video_vae_int8_convrot.safetensors`（または `fp16` 版） | 存在し、容量が約 2.81 GB（`fp16` 版は約 5.21 GB）であること | `ls -lh` 出力 |
+| Audio VAE | `<drive_root>/models/vae/minimax_h3_audio_vae_fp32.safetensors` | 存在し、容量が約 0.61 GB であること | `ls -lh` 出力 |
+| 高速化LoRA | `<drive_root>/models/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` | 存在し、容量が約 1.96 GB であること | `ls -lh` 出力 |
 
 ## 5. 更新・再構築・削除
 
@@ -127,7 +127,8 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 | ID | 対象手順 | 症状・差異 | 原因・制約 | 対応 | 再発防止・解除条件 |
 | :---: | :--- | :--- | :--- | :--- | :--- |
 | `EX-SETUP-001` | 3.1 手順3 | `"Malformed auth code"` で認証失敗 | 非対話シェル実行、コード期限切れ、または空白・改行混入 | 対話型ターミナルから `colab usage` を再実行し新しいコードを取得（壊れたトークン残留時は OS キーリングの `google-colab-cli` または `~/.config/colab-cli/token.json` を削除して再認証） | 初回認証成功・OSキーリング保存で解消 |
-| `EX-SETUP-002` | 3.1 手順5 | Windows で `Permission denied (publickey)` | `~/.ssh/config` の `Host *` より下に Colab 設定がある、または相対パス指定 | Colab ブロックを `Host *` より上位に移動し絶対パスを指定（フェーズ2は動的引数を使用） | 手動設定見直し完了で解消 |
+| `EX-SETUP-002` | 3.1 手順5 | Windows で `Permission denied (publickey)` | `~/.ssh/config` の `Host *` より下に Colab 設定がある、相対パス指定、または SSH 接続ユーザー名に `root`（`root@colab` / `User root`）が未指定でローカルOSユーザー名になってしまう | Colab ブロックを `Host *` より上位に移動し `User root` と絶対パスを指定（フェーズ2および手動接続でも `root@colab` と `-i` を指定） | `root` ユーザー指定と設定見直し完了で解消 |
+| `EX-SETUP-003` | 3.2 手順1 | `colab drivemount` がタイムアウト・ハング、または `ValueError: mount failed` でも終了コード `0` で抜ける | `google-colab-cli` が Drive 認可 URL 表示後に `Press Enter` を待機するため非対話では進めない。また VM 側 `drive.mount` の 120 秒タイムアウト等で失敗しても `colab` CLI 自体は終了コード `0` を返す場合がある | 対話型 PowerShell で実行し、ブラウザ認可後は速やかに（120秒以内目安で）Enter を押す。必ず `Mounted at /content/drive` 表示または `/content/drive/MyDrive` の存在を確認し、失敗時は同一セッションで `colab drivemount -s <session>` を再実行する | 対話端末での認可完了と `/content/drive/MyDrive` 実在確認で解消 |
 
 ## 7. 関連文書
 
@@ -151,3 +152,5 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | フェーズ0のローカル準備・OAuth/SSH・Drive事前配置手順として初版作成 |
 | Rev.1.1 | 2026-11-23 | xzyozi | `uv tool install google-colab-cli` の導入手順、対話型 OAuth 認証手順、OpenSSH 確認手順を追記 |
+| Rev.1.2 | 2026-11-23 | xzyozi | 公式 `Comfy-Org/MiniMax-H3` 実ファイル名および `scripts/stage_minimax_h3.sh` によるCPU配置手順を反映 |
+| Rev.1.3 | 2026-11-23 | xzyozi | `colab drivemount` 初回認可時の対話型 URL 承認・`Press Enter` 待機および `EX-SETUP-003` を追記 |
