@@ -79,6 +79,7 @@ fi
 
 if [[ -n "${ASSETS_FILE}" && -f "${ASSETS_FILE}" ]]; then
   while IFS= read -r rel_asset || [[ -n "${rel_asset}" ]]; do
+    rel_asset="${rel_asset%$'\r'}"
     [[ -z "${rel_asset}" || "${rel_asset}" =~ ^# ]] && continue
     if ! wait_for_drive_path "${DRIVE_BASE}/${rel_asset}" "any"; then
       echo "Required Drive asset missing: ${DRIVE_BASE}/${rel_asset}" >&2

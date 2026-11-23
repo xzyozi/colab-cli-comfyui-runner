@@ -548,10 +548,10 @@ class OpenSshTransport:
             SetupComfyError: その他セットアップ失敗・タイムアウトの場合。
         """
         opts = build_ssh_options(session_name, ssh_key_path)
-        assets_payload = "\n".join(required_drive_assets) + "\n"
+        assets_payload = ("\n".join(required_drive_assets) + "\n").encode("utf-8")
         remote_cmd = (
             f"chmod +x {remote_dir}/setup.sh && "
-            f"cat > {remote_dir}/required_assets.txt && "
+            f"tr -d '\\r' > {remote_dir}/required_assets.txt && "
             f"bash {remote_dir}/setup.sh "
             f"--model-name {model_name} "
             f"--drive-root {drive_root} "
@@ -560,23 +560,25 @@ class OpenSshTransport:
         )
         cmd = [self._ssh_bin, *opts, self._remote_host, remote_cmd]
         try:
+            # Windows上の text=True は stdin 書き込み時に \n を \r\n へ自動変換するため bytes で送信する。
             proc = subprocess.run(
                 cmd,
                 input=assets_payload,
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
                 timeout=timeout_sec,
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise SetupComfyError(f"setup.sh リモート実行が失敗・タイムアウトしました: {exc}") from exc
 
+        raw_stderr: bytes | str | None = proc.stderr
+        stderr_text = (
+            raw_stderr.decode("utf-8", errors="replace") if isinstance(raw_stderr, bytes) else (raw_stderr or "")
+        ).strip()
         if proc.returncode == 2:
-            raise SetupDriveMissingError(f"Drive必須モデル資産が不足しています: {proc.stderr.strip()}")
+            raise SetupDriveMissingError(f"Drive必須モデル資産が不足しています: {stderr_text}")
         if proc.returncode != 0:
-            raise SetupComfyError(f"setup.sh が失敗しました (code={proc.returncode}): {proc.stderr.strip()}")
+            raise SetupComfyError(f"setup.sh が失敗しました (code={proc.returncode}): {stderr_text}")
 
 
 __all__ = [

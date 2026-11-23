@@ -154,9 +154,11 @@ def test_open_ssh_transport_deliver_and_remote_setup(tmp_path: Path, monkeypatch
     transport.deliver_files("ccr-1", key, [])
 
     recorded: list[list[str]] = []
+    recorded_kwargs: list[dict[str, Any]] = []
 
-    def _run_ok(cmd: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def _run_ok(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[Any]:
         recorded.append(cmd)
+        recorded_kwargs.append(kwargs)
         return _completed(cmd, returncode=0)
 
     monkeypatch.setattr("colab_cli_comfyui_runner.colab_cli.subprocess.run", _run_ok)
@@ -174,11 +176,15 @@ def test_open_ssh_transport_deliver_and_remote_setup(tmp_path: Path, monkeypatch
         drive_root="ComfyUI",
         required_drive_assets=["models/diffusion_models/a.safetensors"],
     )
+    setup_input = recorded_kwargs[2]["input"]
+    assert isinstance(setup_input, bytes)
+    assert b"\r" not in setup_input
+    assert setup_input == b"models/diffusion_models/a.safetensors\n"
 
-    # exit code 2 -> SetupDriveMissingError
+    # exit code 2 -> SetupDriveMissingError (bytes stderr でも変換できること)
     monkeypatch.setattr(
         "colab_cli_comfyui_runner.colab_cli.subprocess.run",
-        lambda cmd, **_kw: _completed(cmd, returncode=2, stderr="missing asset"),
+        lambda cmd, **_kw: subprocess.CompletedProcess(args=cmd, returncode=2, stdout=b"", stderr=b"missing asset"),
     )
     with pytest.raises(SetupDriveMissingError):
         transport.run_remote_setup(
