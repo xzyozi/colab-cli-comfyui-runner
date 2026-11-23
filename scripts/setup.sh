@@ -38,6 +38,11 @@ done
 
 DRIVE_BASE="/content/drive/MyDrive/${DRIVE_ROOT}"
 
+if [[ ! -d "/content/drive/MyDrive" ]]; then
+  echo "Google Drive is not mounted at /content/drive/MyDrive" >&2
+  exit 2
+fi
+
 if [[ ! -d "${DRIVE_BASE}" ]]; then
   echo "Drive root directory not found: ${DRIVE_BASE}" >&2
   exit 2
