@@ -24,10 +24,10 @@ def _completed(args: list[str], returncode: int = 0, stdout: str = "", stderr: s
 
 def test_subprocess_colab_cli_runner_success_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     """SubprocessColabCliRunner の全CLIサブコマンド成功・異常系を検証する。"""
-    recorded: list[list[str]] = []
+    recorded: list[tuple[list[str], dict[str, Any]]] = []
 
-    def _fake_run(cmd: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
-        recorded.append(cmd)
+    def _fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        recorded.append((cmd, kwargs))
         if cmd[1] == "usage":
             return _completed(cmd, stdout="Remaining: 123.5 CU")
         if cmd[1] == "sessions":
@@ -43,14 +43,22 @@ def test_subprocess_colab_cli_runner_success_and_errors(monkeypatch: pytest.Monk
     runner.drivemount("ccr-1")
     runner.stop_session("ccr-1")
 
-    assert recorded[2] == ["colab", "new", "-s", "ccr-1", "--gpu", "A100", "--high-mem"]
-    assert recorded[3] == ["colab", "drivemount", "-s", "ccr-1"]
-    assert recorded[4] == ["colab", "stop", "-s", "ccr-1"]
+    assert recorded[2][0] == ["colab", "new", "-s", "ccr-1", "--gpu", "A100", "--high-mem"]
+    assert recorded[2][1]["capture_output"] is True
+    assert recorded[3][0] == ["colab", "drivemount", "-s", "ccr-1"]
+    assert recorded[3][1]["capture_output"] is False
+    assert recorded[3][1]["timeout"] == 600
+    assert recorded[4][0] == ["colab", "stop", "-s", "ccr-1"]
 
-    # 非ゼロ終了コード時の例外種別確認
+    # 非ゼロ終了コード時の例外種別確認（capture_output=False時のstderr=None含む）
     monkeypatch.setattr(
         "colab_cli_comfyui_runner.colab_cli.subprocess.run",
-        lambda cmd, **_kw: _completed(cmd, returncode=1, stderr="boom"),
+        lambda cmd, **kw: subprocess.CompletedProcess(
+            args=cmd,
+            returncode=1,
+            stdout=None if kw.get("capture_output") is False else "",
+            stderr=None if kw.get("capture_output") is False else "boom",
+        ),
     )
     with pytest.raises(PreflightCuError):
         runner.get_usage()

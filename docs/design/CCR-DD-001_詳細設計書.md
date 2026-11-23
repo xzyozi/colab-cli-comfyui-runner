@@ -5,7 +5,7 @@ document_number: "CCR-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "1.2"
+version: "1.3"
 created_at: "2026-11-22"
 updated_at: "2026-11-23"
 author: "xzyozi"
@@ -77,7 +77,7 @@ related_documents:
 - **動的SSH接続契約（案A）**: 静的 `~/.ssh/config` のホストエイリアスに依存せず、`ssh` / `scp` 実行時に `-o ProxyCommand="colab ssh --proxy-mode -s <session_name> -i <abs_key_path>" -o StrictHostKeyChecking=no -o UserKnownHostsFile=<os_null>` をCLI引数として動的に組み立てて渡す（Windows上のパス区切りやヌルデバイス差異はアダプタ層で吸収する）。
 - **事前条件 (Pre-conditions)**: `F-001` が成功し、排他ロックが保持され、`ssh_key_path` がローカルに存在すること。
 - **事後条件 (Post-conditions)**: ロックに `session_name` が永続記録され、Colab VM 稼働・Drive マウント完了およびローカル `127.0.0.1:<local_port>` へのSSH転送プロセスPIDを含む `VmSessionDto` が返却されること。`colab new` 着手後の途中失敗時はロック記録済みの `session_name` を基に `F-006` での確実な停止を可能にする。
-- **タイムアウト / キャンセル**: `colab new` は 300 秒、`colab drivemount` は 180 秒、SSH疎通待機は 60 秒を上限とする。
+- **タイムアウト / キャンセル**: `colab new` は 300 秒、`colab drivemount` は 600 秒（初回または再承認時に Drive OAuth URL 表示と `Press Enter` 待ちが発生するため標準入出力を捕捉せず継承）、SSH疎通待機は 60 秒を上限とする。
 
 #### 機能契約（機能ID: `F-003`）
 
@@ -340,3 +340,4 @@ sequenceDiagram
 | Rev.1.0 | 2026-11-22 | xzyozi | 基本設計書（CCR-BD-001）およびVM配送方針に基づき初版作成 |
 | Rev.1.1 | 2026-11-22 | xzyozi | 検収指摘反映（動的 `ProxyCommand` 接続契約、`input_assets` `/upload/image`・`drive_assets/` 解決、`output_prefix` 注入、`session_name` 事前記録、`drive_root`/`ssh_key_path` 受け渡し元明記） |
 | Rev.1.2 | 2026-11-23 | xzyozi | 実装整合（`BatchRunRequestDto` へ `base_dir` を追記） |
+| Rev.1.3 | 2026-11-23 | xzyozi | `colab drivemount` タイムアウトを 600 秒へ変更し、対話型 Drive 認可待ちのための標準入出力継承を明記 |

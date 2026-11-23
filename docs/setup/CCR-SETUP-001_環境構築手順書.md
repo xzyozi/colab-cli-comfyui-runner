@@ -5,7 +5,7 @@ document_number: "CCR-SETUP-001"
 document_role: "procedure"
 ssot_scope: "environment_setup"
 status: "draft"
-version: "1.1"
+version: "1.3"
 created_at: "2026-11-22"
 updated_at: "2026-11-23"
 author: "xzyozi"
@@ -99,7 +99,7 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 
 | No. | 操作・設定 | 期待結果 | 異常時の対応 |
 | :---: | :--- | :--- | :--- |
-| 1 | 経路A（CPUランタイム）で `colab new -s ccr-stage` → `colab drivemount -s ccr-stage` 後に `scripts/stage_minimax_h3.sh` を転送・実行（または経路Bでローカル経由）し、`Comfy-Org/MiniMax-H3` から必要モデル群を上記サブディレクトリへ配置する。 | 必須5ファイル（Ref2VA併用時は6ファイル）が所定ディレクトリに保存される。 | 転送中断時は再実行（`curl -C -` によるレジューム対応）し、0バイトや `.part` ファイルを残さない。 |
+| 1 | 経路A（CPUランタイム）で**ご自身の対話型ターミナル**から `colab new -s ccr-stage` → `colab drivemount -s ccr-stage` を実行し（Drive 未認可時は端末に認可 URL と `Press Enter` 待ちが表示されるため、ブラウザで許可後に Enter を押す）、その後 `scripts/stage_minimax_h3.sh` を転送・実行（または経路Bでローカル経由）して `Comfy-Org/MiniMax-H3` から必要モデル群を上記サブディレクトリへ配置する。 | 必須5ファイル（Ref2VA併用時は6ファイル）が所定ディレクトリに保存される。 | 転送中断時は再実行（`curl -C -` によるレジューム対応）し、0バイトや `.part` ファイルを残さない。非対話環境で `drivemount` が待機状態になった場合は `colab stop -s ccr-stage` 後に対話型ターミナルでやり直す。 |
 | 2 | 経路Aで CPU ランタイムを起動した場合は、配置完了直後に必ず `colab stop` および `colab sessions` で停止を確認する。 | アクティブセッションが空になる。 | 残存時は即座に `colab stop` を再実行する。 |
 | 3 | 配置した全ファイルについて、次章「4. 構築後の確認」のパス・サイズ検収リストと照合する。 | 全ファイルのパスと容量目安が一致する。 | 不一致ファイルは再取得して差し替える。 |
 
@@ -128,6 +128,7 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 | :---: | :--- | :--- | :--- | :--- | :--- |
 | `EX-SETUP-001` | 3.1 手順3 | `"Malformed auth code"` で認証失敗 | 非対話シェル実行、コード期限切れ、または空白・改行混入 | 対話型ターミナルから `colab usage` を再実行し新しいコードを取得（壊れたトークン残留時は OS キーリングの `google-colab-cli` または `~/.config/colab-cli/token.json` を削除して再認証） | 初回認証成功・OSキーリング保存で解消 |
 | `EX-SETUP-002` | 3.1 手順5 | Windows で `Permission denied (publickey)` | `~/.ssh/config` の `Host *` より下に Colab 設定がある、または相対パス指定 | Colab ブロックを `Host *` より上位に移動し絶対パスを指定（フェーズ2は動的引数を使用） | 手動設定見直し完了で解消 |
+| `EX-SETUP-003` | 3.2 手順1 | `colab drivemount` がタイムアウト・ハングする | `google-colab-cli` が Drive 認可 URL 表示後に `Press Enter` を TTY/標準入力から待機するため、出力を捕捉する非対話シェル等では進めない | 出力を捕捉しない対話型 PowerShell 等で実行し、表示された Google Drive 認可 URL をブラウザで許可した後に Enter キーを押す | 対話端末での Drive 認可完了で解消 |
 
 ## 7. 関連文書
 
@@ -152,3 +153,4 @@ mkdir -p /content/drive/MyDrive/ComfyUI/output
 | Rev.1.0 | 2026-11-22 | xzyozi | フェーズ0のローカル準備・OAuth/SSH・Drive事前配置手順として初版作成 |
 | Rev.1.1 | 2026-11-23 | xzyozi | `uv tool install google-colab-cli` の導入手順、対話型 OAuth 認証手順、OpenSSH 確認手順を追記 |
 | Rev.1.2 | 2026-11-23 | xzyozi | 公式 `Comfy-Org/MiniMax-H3` 実ファイル名および `scripts/stage_minimax_h3.sh` によるCPU配置手順を反映 |
+| Rev.1.3 | 2026-11-23 | xzyozi | `colab drivemount` 初回認可時の対話型 URL 承認・`Press Enter` 待機および `EX-SETUP-003` を追記 |
