@@ -12,7 +12,7 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Protocol
+from typing import Any, Protocol
 
 from colab_cli_comfyui_runner.errors import (
     PreflightCuError,
@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 _CU_LABEL_RE = re.compile(r"(?i)(?:remaining|balance|available|compute\s*units?|cu)\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)")
 _NUMBER_RE = re.compile(r"([0-9]+(?:\.[0-9]+)?)")
 _NO_SESSION_MARKERS = ("no active", "no running", "no sessions", "none", "0 sessions")
+_SSH_429_MARKERS = ("Already-active SSH session", "HTTP 429", "SSH session limit reached")
+_SSH_MAX_ATTEMPTS = 3
+_SSH_429_RETRY_DELAY_SEC = 3.0
+
+
+def _is_ssh_429(stderr_text: str) -> bool:
+    return any(marker in stderr_text for marker in _SSH_429_MARKERS)
 
 
 def parse_cu_usage(output: str) -> float:
@@ -405,6 +412,50 @@ class OpenSshTransport:
         self._scp_bin = _resolve_openssh_binary(scp_bin)
         self._remote_host = remote_host
 
+    @staticmethod
+    def _decode_stderr(raw: bytes | str | None) -> str:
+        if raw is None:
+            return ""
+        return raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+
+    @classmethod
+    def _run_ssh_with_429_retry(
+        cls,
+        cmd: list[str],
+        *,
+        timeout_sec: int,
+        input_bytes: bytes | None = None,
+    ) -> subprocess.CompletedProcess[Any]:
+        """SSH / SCP コマンドを実行し、HTTP 429 (セッション解放ラグ) 時のみ最大3回リトライする。"""
+        run_kwargs: dict[str, Any] = {
+            "capture_output": True,
+            "timeout": timeout_sec,
+            "check": False,
+        }
+        if input_bytes is not None:
+            run_kwargs["input"] = input_bytes
+        else:
+            run_kwargs["text"] = True
+            run_kwargs["encoding"] = "utf-8"
+            run_kwargs["errors"] = "replace"
+
+        for attempt in range(1, _SSH_MAX_ATTEMPTS + 1):
+            proc = subprocess.run(cmd, **run_kwargs)
+            if proc.returncode == 0:
+                return proc
+            stderr_text = cls._decode_stderr(proc.stderr)
+            if attempt < _SSH_MAX_ATTEMPTS and _is_ssh_429(stderr_text):
+                logger.warning(
+                    "SSHセッション制限 (HTTP 429) を検知したため %.1f秒後に再試行します (%d/%d)。",
+                    _SSH_429_RETRY_DELAY_SEC,
+                    attempt,
+                    _SSH_MAX_ATTEMPTS,
+                )
+                time.sleep(_SSH_429_RETRY_DELAY_SEC)
+                continue
+            return proc
+        raise AssertionError("unreachable")  # pragma: no cover
+
     def start_tunnel(
         self,
         session_name: str,
@@ -440,30 +491,50 @@ class OpenSshTransport:
             *opts,
             self._remote_host,
         ]
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+        for attempt in range(1, _SSH_MAX_ATTEMPTS + 1):
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+            except OSError as exc:
+                raise VmProvisionError(f"SSHトンネル起動に失敗しました: {exc}") from exc
+
+            handle = SubprocessTunnelHandle(proc)
+            deadline = time.monotonic() + timeout_sec
+            retry_429 = False
+            while time.monotonic() < deadline:
+                if proc.poll() is not None:
+                    stderr_text = proc.stderr.read() if proc.stderr is not None else ""
+                    if attempt < _SSH_MAX_ATTEMPTS and _is_ssh_429(stderr_text):
+                        logger.warning(
+                            "SSHトンネルが HTTP 429 で終了したため %.1f秒後に再試行します (%d/%d)。",
+                            _SSH_429_RETRY_DELAY_SEC,
+                            attempt,
+                            _SSH_MAX_ATTEMPTS,
+                        )
+                        handle.close()
+                        time.sleep(_SSH_429_RETRY_DELAY_SEC)
+                        retry_429 = True
+                        break
+                    raise VmProvisionError(
+                        f"SSHトンネルが異常終了しました (code={proc.returncode}): {stderr_text.strip()}"
+                    )
+                if _is_local_port_open(local_port):
+                    return handle
+                time.sleep(0.5)
+
+            if retry_429:
+                continue
+            handle.close()
+            raise VmProvisionError(
+                f"SSHポート転送 (127.0.0.1:{local_port}) が {timeout_sec}秒以内に疎通しませんでした。"
             )
-        except OSError as exc:
-            raise VmProvisionError(f"SSHトンネル起動に失敗しました: {exc}") from exc
-
-        handle = SubprocessTunnelHandle(proc)
-        deadline = time.monotonic() + timeout_sec
-        while time.monotonic() < deadline:
-            if proc.poll() is not None:
-                stderr_text = proc.stderr.read() if proc.stderr is not None else ""
-                raise VmProvisionError(f"SSHトンネルが異常終了しました (code={proc.returncode}): {stderr_text.strip()}")
-            if _is_local_port_open(local_port):
-                return handle
-            time.sleep(0.5)
-
-        handle.close()
-        raise VmProvisionError(f"SSHポート転送 (127.0.0.1:{local_port}) が {timeout_sec}秒以内に疎通しませんでした。")
+        raise AssertionError("unreachable")  # pragma: no cover
 
     def deliver_files(
         self,
@@ -491,35 +562,21 @@ class OpenSshTransport:
         opts = build_ssh_options(session_name, ssh_key_path)
         mkdir_cmd = [self._ssh_bin, *opts, self._remote_host, f"mkdir -p {remote_dir}"]
         try:
-            mkdir_proc = subprocess.run(
-                mkdir_cmd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_sec,
-                check=False,
-            )
+            mkdir_proc = self._run_ssh_with_429_retry(mkdir_cmd, timeout_sec=timeout_sec)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise SetupComfyError(f"VM配送先ディレクトリ作成に失敗しました: {exc}") from exc
         if mkdir_proc.returncode != 0:
-            raise SetupComfyError(f"VM配送先ディレクトリ作成エラー: {mkdir_proc.stderr.strip()}")
+            raise SetupComfyError(f"VM配送先ディレクトリ作成エラー: {self._decode_stderr(mkdir_proc.stderr).strip()}")
 
         scp_cmd = [self._scp_bin, *opts, *[str(f) for f in files], f"{self._remote_host}:{remote_dir}/"]
         try:
-            scp_proc = subprocess.run(
-                scp_cmd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_sec,
-                check=False,
-            )
+            scp_proc = self._run_ssh_with_429_retry(scp_cmd, timeout_sec=timeout_sec)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise SetupComfyError(f"SCP配送に失敗しました: {exc}") from exc
         if scp_proc.returncode != 0:
-            raise SetupComfyError(f"SCP配送エラー (code={scp_proc.returncode}): {scp_proc.stderr.strip()}")
+            raise SetupComfyError(
+                f"SCP配送エラー (code={scp_proc.returncode}): {self._decode_stderr(scp_proc.stderr).strip()}"
+            )
 
     def run_remote_setup(
         self,
@@ -561,20 +618,11 @@ class OpenSshTransport:
         cmd = [self._ssh_bin, *opts, self._remote_host, remote_cmd]
         try:
             # Windows上の text=True は stdin 書き込み時に \n を \r\n へ自動変換するため bytes で送信する。
-            proc = subprocess.run(
-                cmd,
-                input=assets_payload,
-                capture_output=True,
-                timeout=timeout_sec,
-                check=False,
-            )
+            proc = self._run_ssh_with_429_retry(cmd, timeout_sec=timeout_sec, input_bytes=assets_payload)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise SetupComfyError(f"setup.sh リモート実行が失敗・タイムアウトしました: {exc}") from exc
 
-        raw_stderr: bytes | str | None = proc.stderr
-        stderr_text = (
-            raw_stderr.decode("utf-8", errors="replace") if isinstance(raw_stderr, bytes) else (raw_stderr or "")
-        ).strip()
+        stderr_text = self._decode_stderr(proc.stderr).strip()
         if proc.returncode == 2:
             raise SetupDriveMissingError(f"Drive必須モデル資産が不足しています: {stderr_text}")
         if proc.returncode != 0:

@@ -83,12 +83,18 @@ def test_subprocess_colab_cli_runner_success_and_errors(monkeypatch: pytest.Monk
 
 
 class _FakePopen:
-    def __init__(self, *, exit_code: int | None = None, wait_timeout_once: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        exit_code: int | None = None,
+        wait_timeout_once: bool = False,
+        stderr_text: str = "tunnel failed",
+    ) -> None:
         self.returncode = exit_code
         self._wait_timeout_once = wait_timeout_once
         self.terminated = False
         self.killed = False
-        self.stderr = io.StringIO("tunnel failed")
+        self.stderr = io.StringIO(stderr_text)
 
     def poll(self) -> int | None:
         return self.returncode
@@ -215,3 +221,24 @@ def test_open_ssh_transport_deliver_and_remote_setup(tmp_path: Path, monkeypatch
 def test_is_local_port_open_closed_port() -> None:
     """未開放ポートに対して False を返すこと。"""
     assert _is_local_port_open(59999) is False
+
+
+def test_open_ssh_transport_retries_on_429(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """HTTP 429 (Already-active SSH session) 発生時は最大3回まで待機リトライすること。"""
+    key = tmp_path / "id_ed25519"
+    key.write_text("KEY", encoding="utf-8")
+    transport = OpenSshTransport()
+    sleeps: list[float] = []
+    monkeypatch.setattr("colab_cli_comfyui_runner.colab_cli.time.sleep", lambda s: sleeps.append(s))
+
+    popens = [
+        _FakePopen(exit_code=255, stderr_text="[colab] Already-active SSH session (HTTP 429)"),
+        _FakePopen(exit_code=None),
+    ]
+    monkeypatch.setattr("colab_cli_comfyui_runner.colab_cli.subprocess.Popen", lambda *_a, **_kw: popens.pop(0))
+    monkeypatch.setattr("colab_cli_comfyui_runner.colab_cli._is_local_port_open", lambda _p: True)
+
+    handle = transport.start_tunnel("ccr-1", key, timeout_sec=5)
+    handle.close()
+    assert len(sleeps) == 1
+    assert popens == []
