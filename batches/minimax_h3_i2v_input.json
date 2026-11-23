@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "batch_id": "h3_i2v_input_001",
+  "model_name": "minimax_h3",
+  "max_batch_duration_sec": 3600,
+  "min_required_cu": 5.0,
+  "jobs": [
+    {
+      "job_id": "dance_001",
+      "prompt": "Vertical 9:16 framing, medium full shot, smooth handheld camera feel, soft warm indoor lighting. Directly from the starting image, the adult woman transitions smoothly into a slow, sensual dance, swaying her hips in a fluid figure-eight motion and rolling her shoulders with natural rhythm. She runs one hand softly through her hair while keeping confident, flirtatious eye contact with the camera, her hair and fabric moving naturally with continuous momentum. Audio: strictly no background music, only realistic room ambience, subtle clothing rustling, light footsteps, and soft steady breathing.",
+      "width": 768,
+      "height": 1344,
+      "duration_sec": 5,
+      "input_assets": {
+        "first_frame": {
+          "source": "drive",
+          "path": "example.png"
+        }
+      }
+    }
+  ]
+}
