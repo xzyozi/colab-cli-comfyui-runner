@@ -43,7 +43,36 @@ if [[ ! -d "/content/drive/MyDrive" ]]; then
   exit 2
 fi
 
-if [[ ! -d "${DRIVE_BASE}" ]]; then
+wait_for_drive_path() {
+  local target_path="$1"
+  local kind="$2"
+  local max_wait_sec=60
+  local elapsed=0
+  local parent_dir
+  parent_dir="$(dirname "${target_path}")"
+
+  while (( elapsed < max_wait_sec )); do
+    if [[ "${kind}" == "dir" && -d "${target_path}" ]]; then
+      return 0
+    fi
+    if [[ "${kind}" == "any" && -e "${target_path}" ]]; then
+      return 0
+    fi
+    ls -la "${parent_dir}" >/dev/null 2>&1 || true
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  if [[ "${kind}" == "dir" && -d "${target_path}" ]]; then
+    return 0
+  fi
+  if [[ "${kind}" == "any" && -e "${target_path}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+if ! wait_for_drive_path "${DRIVE_BASE}" "dir"; then
   echo "Drive root directory not found: ${DRIVE_BASE}" >&2
   exit 2
 fi
@@ -51,7 +80,7 @@ fi
 if [[ -n "${ASSETS_FILE}" && -f "${ASSETS_FILE}" ]]; then
   while IFS= read -r rel_asset || [[ -n "${rel_asset}" ]]; do
     [[ -z "${rel_asset}" || "${rel_asset}" =~ ^# ]] && continue
-    if [[ ! -e "${DRIVE_BASE}/${rel_asset}" ]]; then
+    if ! wait_for_drive_path "${DRIVE_BASE}/${rel_asset}" "any"; then
       echo "Required Drive asset missing: ${DRIVE_BASE}/${rel_asset}" >&2
       exit 2
     fi
