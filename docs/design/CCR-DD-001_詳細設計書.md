@@ -5,7 +5,7 @@ document_number: "CCR-DD-001"
 document_role: "normative"
 ssot_scope: "module_behavior"
 status: "draft"
-version: "1.4"
+version: "1.5"
 created_at: "2026-11-22"
 updated_at: "2026-11-23"
 author: "xzyozi"
@@ -73,7 +73,7 @@ related_documents:
 #### 機能契約（機能ID: `F-002`）
 
 - **対象機能・関数名**: `provision_vm_and_tunnel`（VM起動・Driveマウント・SSHトンネル確立）
-- **機能概要**: 一意な `session_name` を採番して `colab new` 実行直前に原子置換で `state/active_batch.lock` へ記録した上で、`BatchRunRequestDto.vm_profiles`（既定: `A100 High-RAM` → `A100 Standard` → `G4` → `H100`、L4以下へはフォールバックしない）を順に試行してスポットVMを起動し、続けて `colab drivemount` を実行して `localhost:8188` へのSSHポートフォワーディングバックグラウンドプロセスを確立する。
+- **機能概要**: 一意な `session_name` を採番して `colab new` 実行直前に原子置換で `state/active_batch.lock` へ記録した上で、`BatchRunRequestDto.vm_profiles`（既定: `A100 Standard (40GB/83.5GB RAM)` → `G4` → `A100 High-RAM`、L4以下へはフォールバックしない）を順に試行してスポットVMを起動し、続けて `colab drivemount` を実行して `localhost:8188` へのSSHポートフォワーディングバックグラウンドプロセスを確立する。
 - **動的SSH接続契約（案A）**: 静的 `~/.ssh/config` のホストエイリアスに依存せず、`ssh` / `scp` 実行時に `-i <abs_key_path> -o ProxyCommand="colab ssh --proxy-mode -s <session_name> -i <abs_key_path>" -o StrictHostKeyChecking=no -o UserKnownHostsFile=<os_null> -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o BatchMode=yes` を組み立て、接続先を `root@colab`（Colab VM のSSH接続ユーザー `root` 明示）として実行する（Windows上のパス区切り・OpenSSH探索・ヌルデバイス差異はアダプタ層で吸収する）。
 - **事前条件 (Pre-conditions)**: `F-001` が成功し、排他ロックが保持され、`ssh_key_path` がローカルに存在すること。
 - **事後条件 (Post-conditions)**: ロックに `session_name` が永続記録され、Colab VM 稼働・Drive マウント完了およびローカル `127.0.0.1:<local_port>` へのSSH転送プロセスPIDを含む `VmSessionDto` が返却されること。`colab new` 着手後の途中失敗時はロック記録済みの `session_name` を基に `F-006` での確実な停止を可能にする。
@@ -127,7 +127,7 @@ related_documents:
 | `drive_root` | 文字列 | 任意 | 不可 | `"ComfyUI"` | CLI引数 > 環境変数 `CCR_DRIVE_ROOT` > 既定値 `"ComfyUI"` の順で解決（親参照 `..` 禁止） | `F-003` `EnvDeliveryPayloadDto` の発生源 |
 | `ssh_key_path` | 文字列（Path） | 任意 | 不可 | OS既定 `ed25519` 鍵 | CLI引数 > 環境変数 `CCR_SSH_KEY_PATH` > `~/.ssh/id_ed25519` の順で解決し実在すること | 動的 `ProxyCommand` の `-i` 引数用（ログ出力禁止） |
 | `base_dir` | 文字列（Path） | 任意 | 不可 | カレントディレクトリ | `--base-dir` で指定するリポジトリ・状態ファイル基準ディレクトリ | `workflows/`・`logs/`・`state/` 基点 |
-| `vm_profiles` | 配列（`(gpu, high_mem)`） | 任意 | 不可 | `HIGH_TIER_VM_PROFILES` | 非空配列。既定は `("A100", true)`, `("A100", false)`, `("G4", false)`, `("H100", false)` の順でL4より上位のみ試行 | 混雑時の上位GPU自動フォールバック用 |
+| `vm_profiles` | 配列（`(gpu, high_mem)`） | 任意 | 不可 | `HIGH_TIER_VM_PROFILES` | 非空配列。既定は `("A100", false)`, `("G4", false)`, `("A100", true)` の順でL4より上位のみ試行 | 希少な `--high-mem` 枠枯渇・制限回避のため標準A100優先 |
 
 #### 対象機能ID: `F-003`（VM配送入力 DTO: `EnvDeliveryPayloadDto`）
 
@@ -343,3 +343,4 @@ sequenceDiagram
 | Rev.1.2 | 2026-11-23 | xzyozi | 実装整合（`BatchRunRequestDto` へ `base_dir` を追記） |
 | Rev.1.3 | 2026-11-23 | xzyozi | `colab drivemount` タイムアウトを 600 秒へ変更し、対話型 Drive 認可待ちのための標準入出力継承を明記 |
 | Rev.1.4 | 2026-11-23 | xzyozi | `F-002` / `BatchRunRequestDto` へ L4 より上位GPUのみ（`A100 High-RAM` → `A100 Standard` → `G4` → `H100`）のフォールバック試行仕様を追記 |
+| Rev.1.5 | 2026-11-23 | xzyozi | `--high-mem` 枠限定による 503 回避のため `HIGH_TIER_VM_PROFILES` を `A100 Standard` → `G4` → `A100 High-RAM` 順へ変更 |

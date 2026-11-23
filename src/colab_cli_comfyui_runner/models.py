@@ -535,12 +535,12 @@ class CuUsageRecord:
 
 # --- DTO (CCR-DD-001 2.3 / 2.4) ---
 
-# L4以下（L4/T4/CPU）へは落とさず、L4より上位のGPU環境のみを優先順でフォールバックする。
+# A100 に --high-mem を付けると空きが極端に少ない最上位枠 (80GB/167GB) へ限定され 503 / 割当制限を招きやすいため、
+# 標準 A100 (40GB / RAM 83.5GB) を第一候補とし、G4 -> A100 High-RAM の順でフォールバックする（L4以下は不使用）。
 HIGH_TIER_VM_PROFILES: tuple[tuple[str, bool], ...] = (
-    ("A100", True),
     ("A100", False),
     ("G4", False),
-    ("H100", False),
+    ("A100", True),
 )
 
 

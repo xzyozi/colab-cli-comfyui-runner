@@ -5,7 +5,7 @@ document_number: "CCR-ENV-001"
 document_role: "normative"
 ssot_scope: "environment"
 status: "draft"
-version: "1.2"
+version: "1.4"
 created_at: "2026-11-22"
 updated_at: "2026-11-23"
 author: "xzyozi"
@@ -49,7 +49,7 @@ related_documents:
 
 - **必須プラットフォーム・ハードウェア**:
   - **推論GPU**: NVIDIA A100（VRAM 40GB）単一構成
-  - **システムRAM**: 64GB以上（`--high-mem` 指定必須。モデルオフロードおよびVAEデコード時のOOM防止のため）
+  - **システムRAM**: 64GB以上（通常は `--high-mem` なしの標準 A100 でも 83.5GB 割り当てられるため標準 A100 を第一候補とし、混雑時は `G4` / `--high-mem` へフォールバック。L4以下は速度不足のため非推奨）
   - **永続ストレージ**: Google Drive 5TB（モデル資産約42.5GBおよび生成動画の保存先）
   - **ローカル制御端末**: Python 3（3.10以上、推奨3.12）、OpenSSH、`ed25519` SSH鍵。Windows環境では `~/.ssh/config` の `ProxyCommand` 内 `-i` に鍵の絶対パスを指定し、`Host *` より上位に記述すること。
 - **互換性・契約・法務制約**:
@@ -170,3 +170,4 @@ related_documents:
 | Rev.1.1 | 2026-11-22 | xzyozi | `google-colab-cli` コマンド表記（`colab new`・`colab drivemount`・`colab sessions`）を実態に整合 |
 | Rev.1.2 | 2026-11-23 | xzyozi | `google-colab-cli` を `uv tool install` 等で導入する外部CLIである旨を明記 |
 | Rev.1.3 | 2026-11-23 | xzyozi | 公式 `Comfy-Org/MiniMax-H3` の実測モデルファイル名・容量表記へ整合 |
+| Rev.1.4 | 2026-11-23 | xzyozi | A100 標準形状（40GB / RAM 83.5GB）を第一候補とし `--high-mem` 枠枯渇を回避する方針へ整合 |

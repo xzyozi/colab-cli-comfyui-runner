@@ -5,7 +5,7 @@ document_number: "CCR-OP-001"
 document_role: "procedure"
 ssot_scope: "operation"
 status: "draft"
-version: "1.1"
+version: "1.2"
 created_at: "2026-11-22"
 updated_at: "2026-11-23"
 author: "xzyozi"
@@ -60,7 +60,7 @@ related_documents:
 | No. | 操作・確認内容 | 期待結果 | 異常時の対応 |
 | :---: | :--- | :--- | :--- |
 | 1 | 実行前確認：`colab sessions` と `colab usage` を実行し、空セッションと開始前 CU（`cu_before`）および現在時刻を記録する。 | 残存セッションなし、`cu_before` が記録される。 | 残存セッションがあれば `colab stop` で停止してからやり直す。 |
-| 2 | VM起動・Driveマウント：`colab new -s h3-bench --gpu A100 --high-mem` を実行し、続けて `colab drivemount` を実行する。 | A100 High-RAM VM が起動し、`/content/drive/MyDrive/` がマウントされる。 | 起動失敗・タイムアウト時は即 `colab stop -s h3-bench` を実行する。 |
+| 2 | VM起動・Driveマウント：`colab new -s h3-bench --gpu A100`（`--high-mem` なしが第一候補・VRAM 40GB / RAM 83.5GB）を実行し、続けて `colab drivemount` を実行する。 | A100 VM が起動し、`/content/drive/MyDrive/` がマウントされる（`nvidia-smi` / `free -h` で確認）。 | 起動失敗・タイムアウト時は即 `colab stop -s h3-bench` を実行し、連続リトライを避ける。 |
 | 3 | 環境復元とポート転送：`scripts/setup.sh` および `workflows/minimax_h3/` 依存定義をVMへ配送・実行し、SSHポートフォワーディング（`localhost:8188`）を張る。 | 3分以内を目安に ComfyUI が起動し、ブラウザで `http://127.0.0.1:8188` が開く。 | Drive モデル不在エラー時は配置を見直し、即座に VM を停止する。 |
 | 4 | 2本連続生成ベンチマーク：軽量テスト設定（`960x544` / 5秒 / Turbo 8step）で **1本目（VRAMロード込み）** と **2本目（純粋推論）** を連続実行し、各所要時間と `output/` 書込を確認する。 | 2本目が 1.5〜2.5 分目安で完了し、音声付きMP4が Drive `output/` へ保存される。 | OOM 発生時は `--high-mem` 有無と解像度/秒数を確認する。 |
 | 5 | 本番設定（任意確認：`1344x768` / 10秒 / 8step + SageAttn）の所要時間を確認後、ComfyUI 設定で **Dev Mode** を有効化し、`Save (API Format)` から `workflows/minimax_h3/workflow_api.json` を保存する。 | API形式のJSONがローカルリポジトリへ保存される。 | フォーマット誤り時は `Save` ではなく `Save (API Format)` を再実行する。 |
@@ -71,7 +71,7 @@ related_documents:
 # フェーズ1 実行例（セッション名は用途に合わせて変更）
 colab sessions
 colab usage
-colab new -s h3-bench --gpu A100 --high-mem
+colab new -s h3-bench --gpu A100
 colab drivemount -s h3-bench
 # ポート転送例（別ターミナルまたはバックグラウンド）
 ssh -N -L 8188:127.0.0.1:8188 -o ProxyCommand="colab ssh --proxy-mode -s h3-bench -i $env:USERPROFILE\.ssh\id_ed25519" -i $env:USERPROFILE\.ssh\id_ed25519 root@colab
@@ -152,7 +152,9 @@ uv run python scripts/run_batch.py --batch batches/h3_batch_001.json
   - まず `colab new` 時に `--high-mem` が確実に付与されているか確認する。
   - 解像度・尺・参照枚数を段階的に引き下げる（例: 本番 `1344x768`・10秒 → `960x544`・5〜8秒へフォールバック）。
 - **Google Colab 側リソース割当制限 / クールダウン**:
-  - A100 の確保に失敗し続ける場合はリトライ連打を避け、数時間〜半日程度時間を空けて再試行するか、消費ペースを見直す。
+  - A100 の確保に失敗し続ける場合は、まず `--high-mem` を外して標準 A100（40GB / RAM 83.5GB）で試行する（`--high-mem` は希少な 80GB/167GB 枠限定となり失敗しやすい）。
+  - 短時間の連続リトライは Colab 側の動的クールダウンを誘発するため即停止し、15〜30分（状況により数時間）間隔を空ける。
+  - 実行時間帯は日本時間 20:00〜翌 2:00 頃の混雑帯を避け、午前中〜昼過ぎへのシフトを推奨する。
 
 ---
 
@@ -185,3 +187,4 @@ uv run python scripts/run_batch.py --batch batches/h3_batch_001.json
 | :--- | :--- | :--- | :--- |
 | Rev.1.0 | 2026-11-22 | xzyozi | フェーズ1ベンチマーク・フェーズ2定常運用・障害復旧ランブックとして初版作成 |
 | Rev.1.1 | 2026-11-23 | xzyozi | 手動SSHポート転送例の接続先へ `root@colab` および秘密鍵 `-i` を明記 |
+| Rev.1.2 | 2026-11-23 | xzyozi | 標準 A100（`--high-mem` なし）第一候補化、15〜30分クールダウンおよび混雑時間帯（JST 20:00〜2:00）回避指針を追記 |

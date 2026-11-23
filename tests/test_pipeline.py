@@ -276,10 +276,10 @@ def test_dry_run_and_cli_stdout_json(
 
 def test_tc_l1_011_vm_profile_fallback_above_l4_only(sample_workspace: Path) -> None:
     """L4より上位GPUのみフォールバック試行し、L4/T4/CPUへは落とさず中断すること。"""
-    # A100 High-RAM が 503 で失敗 -> A100 Standard へフォールバック成功
+    # A100 Standard が 503 で失敗 -> G4 へフォールバック成功
     colab_fb = FakeColabCliRunner(
         cu_balances=[100.0, 99.0],
-        failing_new_profiles={("A100", True)},
+        failing_new_profiles={("A100", False)},
     )
     summary = run_batch_pipeline(
         _make_request(sample_workspace),
@@ -289,12 +289,12 @@ def test_tc_l1_011_vm_profile_fallback_above_l4_only(sample_workspace: Path) -> 
     )
     assert summary.final_status == "completed"
     new_calls = [(c[2], c[3]) for c in colab_fb.calls if c[0] == "new"]
-    assert new_calls == [("A100", True), ("A100", False)]
+    assert new_calls == [("A100", False), ("G4", False)]
 
     # 全上位プロファイル失敗時は L4 等へ落とさず ERR-VM-PROVISION で安全中断
     colab_all_fail = FakeColabCliRunner(
         cu_balances=[100.0, 100.0],
-        failing_new_profiles={("A100", True), ("A100", False), ("G4", False), ("H100", False)},
+        failing_new_profiles={("A100", False), ("G4", False), ("A100", True)},
     )
     summary_fail = run_batch_pipeline(
         _make_request(sample_workspace),
@@ -305,6 +305,6 @@ def test_tc_l1_011_vm_profile_fallback_above_l4_only(sample_workspace: Path) -> 
     assert summary_fail.final_status == "aborted"
     assert summary_fail.error_code == "ERR-VM-PROVISION"
     attempted = [(c[2], c[3]) for c in colab_all_fail.calls if c[0] == "new"]
-    assert attempted == [("A100", True), ("A100", False), ("G4", False), ("H100", False)]
+    assert attempted == [("A100", False), ("G4", False), ("A100", True)]
     assert all(gpu not in ("L4", "T4", "CPU") for gpu, _ in attempted)
     assert not (sample_workspace / "state" / "active_batch.lock").exists()
