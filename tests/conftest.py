@@ -10,7 +10,12 @@ from typing import Any
 
 import pytest
 
-from colab_cli_comfyui_runner.errors import JobApiTransientError, JobExecutionError, SetupDriveMissingError
+from colab_cli_comfyui_runner.errors import (
+    JobApiTransientError,
+    JobExecutionError,
+    SetupDriveMissingError,
+    VmProvisionError,
+)
 
 
 @dataclass
@@ -31,6 +36,7 @@ class FakeColabCliRunner:
     active_sessions: set[str] = field(default_factory=set)
     calls: list[tuple[Any, ...]] = field(default_factory=list)
     fail_drivemount: bool = False
+    failing_new_profiles: set[tuple[str, bool]] = field(default_factory=set)
     stop_failures_remaining: int = 0
     keep_session_after_stop: bool = False
 
@@ -53,6 +59,8 @@ class FakeColabCliRunner:
         timeout_sec: int = 300,
     ) -> None:
         self.calls.append(("new", session_name, gpu, high_mem))
+        if (gpu, high_mem) in self.failing_new_profiles:
+            raise VmProvisionError(f"Service Unavailable: {gpu} high_mem={high_mem}")
         self.active_sessions.add(session_name)
 
     def drivemount(self, session_name: str, *, timeout_sec: int = 180) -> None:

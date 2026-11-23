@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import logging
 from pathlib import Path
 import signal
@@ -33,8 +33,10 @@ from colab_cli_comfyui_runner.errors import (
     JobValidationError,
     PreflightCuError,
     StopFailureError,
+    VmProvisionError,
 )
 from colab_cli_comfyui_runner.models import (
+    HIGH_TIER_VM_PROFILES,
     BatchExecutionLog,
     BatchRunRequestDto,
     BatchSpec,
@@ -170,6 +172,7 @@ def provision_vm_and_tunnel(
     lock_manager: LockManager,
     colab: ColabCliRunner,
     ssh: SshTransport,
+    vm_profiles: Sequence[tuple[str, bool]] = HIGH_TIER_VM_PROFILES,
 ) -> tuple[VmSessionDto, ExecutionLock]:
     """`F-002`: `colab new` 直前にロックへ `session_name` を記録し、VM起動・Driveマウント・SSH転送を行う。
 
@@ -181,12 +184,41 @@ def provision_vm_and_tunnel(
         lock_manager: ロックマネージャ。
         colab: Colab CLI Seam。
         ssh: SSHトランスポート Seam。
+        vm_profiles: フォールバック試行する `(gpu, high_mem)` 候補一覧（L4より上位のみ）。
 
     Returns:
         `(VmSessionDto, 更新後ExecutionLock)` のタプル。
+
+    Raises:
+        VmProvisionError: すべての候補プロファイルでVM確保に失敗した場合。
     """
+    if not vm_profiles:
+        raise VmProvisionError("試行可能な GPU プロファイル候補が空です。")
+
     updated_lock = lock_manager.update_session_name(lock, session_name)
-    colab.new_session(session_name, gpu="A100", high_mem=True)
+    last_exc: VmProvisionError | None = None
+    for gpu, high_mem in vm_profiles:
+        try:
+            colab.new_session(session_name, gpu=gpu, high_mem=high_mem)
+            logger.info("Colab VM 起動完了: session=%s, gpu=%s, high_mem=%s", session_name, gpu, high_mem)
+            last_exc = None
+            break
+        except VmProvisionError as exc:
+            last_exc = exc
+            logger.warning(
+                "Colab VM 割当失敗 (gpu=%s, high_mem=%s)、次の候補へフォールバックします: %s",
+                gpu,
+                high_mem,
+                exc,
+            )
+            try:
+                if session_name in colab.list_sessions():
+                    colab.stop_session(session_name)
+            except Exception as stop_exc:
+                logger.warning("失敗後のセッション掃除に失敗しました (%s): %s", session_name, stop_exc)
+    if last_exc is not None:
+        raise last_exc
+
     colab.drivemount(session_name)
     tunnel = ssh.start_tunnel(session_name, ssh_key_path, local_port=local_port, remote_port=8188)
     return (
@@ -539,6 +571,7 @@ def run_batch_pipeline(
             lock_manager=lock_mgr,
             colab=colab_runner,
             ssh=ssh_transport,
+            vm_profiles=request.vm_profiles,
         )
         tunnel_handle = vm_session.tunnel_handle
 

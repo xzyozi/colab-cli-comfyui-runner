@@ -535,6 +535,14 @@ class CuUsageRecord:
 
 # --- DTO (CCR-DD-001 2.3 / 2.4) ---
 
+# L4以下（L4/T4/CPU）へは落とさず、L4より上位のGPU環境のみを優先順でフォールバックする。
+HIGH_TIER_VM_PROFILES: tuple[tuple[str, bool], ...] = (
+    ("A100", True),
+    ("A100", False),
+    ("G4", False),
+    ("H100", False),
+)
+
 
 @dataclass(frozen=True)
 class BatchRunRequestDto:
@@ -547,12 +555,13 @@ class BatchRunRequestDto:
     drive_root: str = "ComfyUI"
     ssh_key_path: Path | None = None
     base_dir: Path = field(default_factory=Path.cwd)
+    vm_profiles: tuple[tuple[str, bool], ...] = HIGH_TIER_VM_PROFILES
 
     def __post_init__(self) -> None:
         """入力パラメータの基本制約を検証する。
 
         Raises:
-            JobValidationError: ポート番号・接頭辞・`drive_root` が不正な場合。
+            JobValidationError: ポート番号・接頭辞・`drive_root`・`vm_profiles` が不正な場合。
         """
         if not (1024 <= self.local_port <= 65535):
             raise JobValidationError(f"local_port は 1024〜65535 の範囲で指定してください: {self.local_port}")
@@ -561,6 +570,8 @@ class BatchRunRequestDto:
                 f"session_prefix が規約外です（英小文字・数字・- 1〜16文字）: {self.session_prefix!r}"
             )
         validate_safe_relpath(self.drive_root, field_name="drive_root")
+        if not self.vm_profiles:
+            raise JobValidationError("vm_profiles には1つ以上の (gpu, high_mem) 候補を指定してください。")
 
 
 @dataclass(frozen=True)
